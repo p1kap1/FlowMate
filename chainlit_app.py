@@ -158,20 +158,36 @@ _ato.Timeout.__aenter__ = _patched_timeout_enter
 async def start():
     cl.user_session.set("agent", WorkAgent())
     await cl.Message(
-        content="你好！我是工作记录助手。我可以帮你：\n\n"
-        "1. **添加记录** — 记录今天做了什么、花了多少时间\n"
-        "2. **按日期查看** — 列出某天或全部记录\n"
-        "3. **汇总分析** — 统计一段时间的工作情况\n"
-        "4. **生成周报** — 自动生成一周工作报告\n"
-        "5. **时间分配** — 分析你的时间都去哪了\n"
-        "6. **优化建议** — 基于记录给出改进建议\n"
-        "7. **关键词搜索** — 快速查找相关记录\n\n"
-        "试试说「我今天开发了3小时，写文档1小时」吧！"
+        content="你好！我是你的工作日志助手。\n\n"
+        "我会**自动记录**我们的对话，你可以随时：\n\n"
+        "- 和我聊你今天做了什么、学了什么\n"
+        "- 说「**同步投递**」→ 自动从 Boss直聘 拉取沟通过/已投递/面试/感兴趣\n"
+        "- 说「**投递汇总**」→ 统计求职进度\n"
+        "- 说「**生成日报**」→ 自动总结今天，输出 Markdown\n"
+        "- 说「**搜索 XXX**」→ 查找历史对话\n\n"
+        "开始聊聊今天吧！"
     ).send()
 
 
 @cl.on_message
 async def on_message(message: cl.Message):
     agent: WorkAgent = cl.user_session.get("agent")
-    reply = agent.chat(message.content)
-    await cl.Message(content=reply).send()
+    try:
+        reply = agent.chat(message.content)
+    except Exception as e:
+        import traceback
+        reply = f"❌ 内部错误: {e}\n```\n{traceback.format_exc()}\n```"
+    
+    # 如果命中了技能调用，读取调试日志展示出来
+    import os
+    debug_log = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "debug.log")
+    debug_info = ""
+    if os.path.exists(debug_log):
+        with open(debug_log, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        recent = [l for l in lines if "CALL" in l or "RESULT" in l]
+        if recent:
+            debug_info = "\n\n--- 🔍 技能调用详情 ---\n" + "".join(recent[-8:])
+        os.remove(debug_log)
+    
+    await cl.Message(content=reply + debug_info).send()

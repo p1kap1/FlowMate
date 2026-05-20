@@ -54,3 +54,6 @@ thumbs.db
 # Python-specific
 mypy_cache/
 *.pyc
+
+# 用户凭证与隐私数据
+users.json
