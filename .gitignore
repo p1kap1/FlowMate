@@ -57,3 +57,7 @@ mypy_cache/
 
 # 用户凭证与隐私数据
 users.json
+
+# 数据文件（对话记录、投递数据、上传文件、日报、开发日志）
+data/
+devlog.md
