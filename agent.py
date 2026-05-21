@@ -32,8 +32,12 @@ SYSTEM_PROMPT = f"""你是 FlowMate，一个工作日志助手。今天的日期
 - add_job_application / list_job_applications / update_job_status: 手动记录/查看/更新
 
 触发规则：
-- 用户说"同步"、"刷新投递"、"更新" → 依次调用 fetch_boss_channels + fetch_boss_applied + fetch_boss_interviews + fetch_boss_interested
-- 用户说"每日推荐"、"同步推荐" → fetch_daily_recommend
+- 用户说"同步"、"刷新投递"、"更新"（没指定平台）→ sync_all_applications（同步全部平台投递）
+- 用户说"同步Boss"、"同步Boss直聘" → sync_boss_applications
+- 用户说"同步智联"、"同步智联招聘" → sync_zhaopin_applications
+- 用户说"每日推荐"、"同步推荐"（没指定平台）→ sync_all_recommends
+- 用户说"Boss推荐"、"Boss每日推荐" → sync_boss_recommends
+- 用户说"智联推荐" → sync_zhaopin_recommends
 - 用户说"投递汇总"、"求职进度"、"统计" → boss_job_summary
 - 用户说"看看投了多少"、"投递情况" → list_job_applications
 - 用户说"每日推荐表"、"展示每日推荐"、"推荐岗位" → show_daily_recommend_table
@@ -43,8 +47,9 @@ SYSTEM_PROMPT = f"""你是 FlowMate，一个工作日志助手。今天的日期
 - 用户说"日报"、"今天总结" → generate_daily_report
 - 用户说"搜索"、"找一下" → search_history
 - 用户说"本周小结"、"阶段总结" → summarize_period
-- 用户说"导出"、"生成Excel"、"导出投递记录" → export_boss_excel
-- 用户说"导出每日推荐"、"每日推荐Excel" → export_daily_recommend_excel
+- 用户说"导出Excel"、"导出全部" → export_all_excel（同时导出投递和每日推荐）
+- 用户说"导出投递表" → export_boss_excel（只导投递）
+- 用户说"导出每日推荐"、"每日推荐Excel" → export_daily_recommend_excel（只导推荐）
 - 用户说"之前的文件"、"历史导出"、"以前的数据" → list_exported_files
 - 用户说"推送GitHub"、"提交代码"、"更新仓库" → git_push_project
 - 用户说"Git状态"、"看看改了什么" → git_display_status

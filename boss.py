@@ -287,35 +287,46 @@ def fetch_daily_recommend() -> list[dict]:
     return _fetch_tab("每日推荐")
 
 
-def _save_jobs_to_storage(jobs: list[dict]) -> int:
-    """将职位列表写入 applications.json，跳过已存在的（按 encrypt_job_id 去重）"""
+def _save_jobs_to_storage(jobs: list[dict], today_only: bool = True) -> int:
+    """将职位列表写入 applications.json，同批次同状态去重。today_only 只存今天的数据"""
     from storage import add_application
     import datetime as _dt_local
 
-    existing_ids = _load_existing_ids()
+    seen = set()
     new_count = 0
+    today = _dt_local.date.today()
 
     for job in jobs:
         jid = job.get("encrypt_job_id", "") or job.get("job_id", "")
-        if jid and jid in existing_ids:
-            # 职位已存在，更新状态（如从 沟通过 → 已投递）
-            new_status = job.get("status", "")
-            if new_status:
-                from storage import update_status_by_encrypt_id
-                if update_status_by_encrypt_id(jid, new_status):
-                    new_count += 1
+        if not jid:
             continue
-        if jid:
-            existing_ids.add(jid)
+        status = job.get("status", "")
+        key = (jid, status)
+        if key in seen:
+            continue
+        seen.add(key)
 
-        # 用 happenTime 计算实际日期
+        # 按 happenTime 计算日期
         ts = job.get("happen_time", "")
-        record_date = date.today().isoformat()
+        record_date = today.isoformat()
         if ts:
             try:
                 record_date = _dt_local.datetime.fromtimestamp(int(ts) / 1000).strftime("%Y-%m-%d")
             except (ValueError, OSError):
                 pass
+
+        if today_only and record_date != today.isoformat():
+            continue
+
+        notes_parts = []
+        if job.get("salary"):
+            notes_parts.append(job["salary"])
+        if job.get("city"):
+            notes_parts.append(job["city"])
+        if job.get("stage"):
+            notes_parts.append(job["stage"])
+        if job.get("industry"):
+            notes_parts.append(job["industry"])
 
         notes_parts = []
         if job.get("salary"):
@@ -356,8 +367,8 @@ def _save_jobs_to_storage(jobs: list[dict]) -> int:
     return new_count
 
 
-def sync_all() -> dict:
-    """同步全部四个模块，返回汇总统计"""
+def sync_all(today_only: bool = True) -> dict:
+    """同步全部四个模块，today_only=True 只保存今天的数据"""
     results = {"沟通过": [], "已投递": [], "面试": [], "感兴趣": []}
     errors = []
     total_new = 0
@@ -449,6 +460,8 @@ def export_excel(status_filter: str = None, date_filter: str = None) -> str:
     jobs = [j for j in jobs if j.get("date") == today]
     if status_filter:
         jobs = [j for j in jobs if j.get("status") == status_filter]
+    # 排除每日推荐和智联
+    jobs = [j for j in jobs if j.get("platform") == "Boss直聘" and j.get("status") != "每日推荐" and j.get("status") != "智联-推荐"]
     if not jobs:
         return f"{today} 暂无投递记录可导出。请先说「同步投递」拉取数据。"
 
@@ -571,13 +584,13 @@ def export_excel(status_filter: str = None, date_filter: str = None) -> str:
     ws.column_dimensions["E"].width = 30
     ws.column_dimensions["F"].width = 18
     ws.column_dimensions["G"].width = 28
-    ws.column_dimensions["H"].width = 14
+    ws.column_dimensions["H"].width = 30
     ws.column_dimensions["I"].width = 40
 
     # 文件名
     import os
     from storage import BOSS_DIR as _report_dir
-    basename = f"Boss直聘_{today}"
+    basename = f"Boss直聘_投递_{today}"
     ext = ".xlsx"
     filepath = os.path.join(_report_dir, f"{basename}{ext}")
     counter = 1
@@ -589,6 +602,20 @@ def export_excel(status_filter: str = None, date_filter: str = None) -> str:
     wb.save(filepath)
     total = len(others) + len(interviews)
     return f"✅ Excel 已生成：`{filepath}`（共 {total} 条：沟通过/已投递/感兴趣 {len(others)} 条 + 面试 {len(interviews)} 条）"
+
+
+def export_all_reports(date_filter: str = None) -> str:
+    """导出全部数据（Boss投递 + Boss推荐 + 智联投递 + 智联推荐）"""
+    results = []
+    results.append(export_excel(date_filter=date_filter))
+    results.append(export_daily_recommend_excel(date_filter=date_filter))
+    # 智联
+    try:
+        import zhaopin
+        results.append(zhaopin.export_zhaopin_excel(date_filter=date_filter))
+    except Exception:
+        pass
+    return "\n".join(results)
 
 
 def export_daily_recommend_excel(date_filter: str = None) -> str:
@@ -651,7 +678,7 @@ def export_daily_recommend_excel(date_filter: str = None) -> str:
         ws.column_dimensions[chr(64 + i)].width = w
 
     import os
-    basename = f"每日推荐_{today}"
+    basename = f"Boss直聘_每日推荐_{today}"
     ext = ".xlsx"
     filepath = os.path.join(_report_dir, f"{basename}{ext}")
     counter = 1

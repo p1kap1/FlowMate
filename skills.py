@@ -471,6 +471,55 @@ def fetch_daily_recommend() -> str:
     )
 
 
+# ---- 智联招聘 ----
+
+def sync_zhaopin_all() -> str:
+    """同步智联招聘全部（已投递+收藏+推荐）"""
+    boss, err = _import_boss()
+    if boss:
+        try:
+            import zhaopin
+        except ImportError:
+            import os, sys, importlib.util
+            zp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zhaopin.py")
+            spec = importlib.util.spec_from_file_location("zhaopin", zp)
+            if spec and spec.loader:
+                zhaopin = importlib.util.module_from_spec(spec)
+                sys.modules["zhaopin"] = zhaopin
+                spec.loader.exec_module(zhaopin)
+            else:
+                return "智联模块未找到"
+        result = zhaopin.sync_zhaopin()
+        lines = [f"智联同步完成：新增 {result['new']} 条"]
+        for tab, count in result["counts"].items():
+            lines.append(f"  {tab}: {count} 条")
+        if result["errors"]:
+            for e in result["errors"]:
+                lines.append(f"  ⚠ {e}")
+        return "\n".join(lines)
+    return f"BOSS模块加载失败（{err}）"
+
+
+def export_zhaopin_to_excel(date: str = None) -> str:
+    """导出智联招聘投递记录为 Excel"""
+    boss, err = _import_boss()
+    if boss:
+        try:
+            import zhaopin
+        except ImportError:
+            import os, sys, importlib.util
+            zp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zhaopin.py")
+            spec = importlib.util.spec_from_file_location("zhaopin", zp)
+            if spec and spec.loader:
+                zhaopin = importlib.util.module_from_spec(spec)
+                sys.modules["zhaopin"] = zhaopin
+                spec.loader.exec_module(zhaopin)
+            else:
+                return "智联模块未找到"
+        return zhaopin.export_zhaopin_excel(date_filter=date)
+    return f"BOSS模块加载失败（{err}）"
+
+
 def boss_job_summary() -> str:
     """汇总四个模块数据，输出统计报告"""
     boss, err = _import_boss()
@@ -485,6 +534,14 @@ def export_boss_excel(status: str = None, date: str = None) -> str:
     if not boss:
         return err
     return boss.export_excel(status_filter=status, date_filter=date)
+
+
+def export_all_excel(date: str = None) -> str:
+    """导出全部（投递 + 每日推荐）"""
+    boss, err = _import_boss()
+    if not boss:
+        return err
+    return boss.export_all_reports(date_filter=date)
 
 
 def export_daily_recommend_excel(date: str = None) -> str:
@@ -723,6 +780,38 @@ FUNCTION_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "sync_all_applications",
+            "description": "同步Boss直聘+智联招聘的投递数据（沟通过/已投递/面试/感兴趣/收藏），不含推荐。用户说「同步」「同步投递」「刷新」时调用。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sync_all_recommends",
+            "description": "同步Boss直聘+智联招聘的每日推荐数据。用户说「每日推荐」「同步推荐」时调用。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sync_boss_applications",
+            "description": "只同步Boss直聘的投递数据。用户说「同步Boss」「同步Boss直聘」时调用。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sync_zhaopin_applications",
+            "description": "只同步智联招聘的投递数据。用户说「同步智联」「智联招聘」时调用。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_setup_wizard",
             "description": "新用户引导设置向导。用户说「开始设置」「不知道怎么用」「引导」时调用。",
             "parameters": {"type": "object", "properties": {}},
@@ -903,8 +992,27 @@ FUNCTION_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "fetch_daily_recommend",
-            "description": "从Boss直聘获取「每日推荐」职位列表（需携带有效会话Cookie）。用户说「同步每日推荐」「每日推荐」时调用。",
+            "description": "从Boss直聘获取「每日推荐」职位列表。用户说「同步每日推荐」「每日推荐」时调用。",
             "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "sync_zhaopin_all",
+            "description": "同步智联招聘的已投递、我的收藏、职位推荐数据。用户说「同步智联」「智联招聘」时调用。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "export_zhaopin_to_excel",
+            "description": "导出智联招聘投递记录为Excel文件。用户说「导出智联Excel」「智联表格」时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {"date": {"type": "string", "description": "日期 YYYY-MM-DD，默认今天"}},
+            },
         },
     },
     {
@@ -986,6 +1094,19 @@ FUNCTION_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "export_all_excel",
+            "description": "导出全部数据（投递+每日推荐）为Excel文件。用户说「导出Excel」「导出全部」时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "日期 YYYY-MM-DD，默认今天"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "export_boss_excel",
             "description": "将投递记录（沟通过/已投递/面试/感兴趣）导出为Excel。用户说「导出Excel」时调用。",
             "parameters": {
@@ -1053,7 +1174,116 @@ FUNCTION_DEFINITIONS = [
     },
 ]
 
+
+# ---- 统一同步（跨平台）----
+
+def sync_all_applications() -> str:
+    """同步全部平台的投递数据（Boss + 智联，不含推荐）"""
+    boss_line = sync_boss_applications()
+    zhaopin_line = sync_zhaopin_applications()
+    return f"{boss_line}\n{zhaopin_line}"
+
+
+def sync_all_recommends() -> str:
+    """同步全部平台的每日推荐（Boss + 智联）"""
+    boss_line = sync_boss_recommends()
+    zhaopin_line = sync_zhaopin_recommends()
+    return f"{boss_line}\n{zhaopin_line}"
+
+
+def sync_boss_applications() -> str:
+    """只同步 Boss直聘 投递数据"""
+    boss, err = _import_boss()
+    if not boss:
+        return f"Boss模块: {err}"
+    lines = ["Boss直聘今日投递："]
+    total = 0
+    for tab, fetcher in [
+        ("沟通过", boss.fetch_boss_channels),
+        ("已投递", boss.fetch_boss_applied),
+        ("面试", boss.fetch_boss_interviews),
+        ("感兴趣", boss.fetch_boss_interested),
+    ]:
+        try:
+            jobs = fetcher()
+            n = boss._save_jobs_to_storage(jobs)
+            total += n
+            lines.append(f"  {tab}: {len(jobs)}条 → 新增{n}条")
+        except Exception as e:
+            lines.append(f"  {tab}: ⚠ {e}")
+    lines.append(f"\n今日共新增 {total} 条投递记录")
+    return "\n".join(lines)
+
+
+def sync_boss_recommends() -> str:
+    """只同步 Boss直聘 每日推荐"""
+    boss, err = _import_boss()
+    if not boss:
+        return f"Boss模块: {err}"
+    try:
+        jobs = boss.fetch_daily_recommend()
+        n = boss._save_jobs_to_storage(jobs)
+        return f"Boss每日推荐同步完成，新增 {n} 条"
+    except Exception as e:
+        return f"Boss每日推荐: ⚠ {e}"
+
+
+def sync_zhaopin_applications() -> str:
+    """只同步 智联招聘 投递数据"""
+    try:
+        import zhaopin as _zp
+    except ImportError:
+        import os, sys, importlib.util
+        zp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zhaopin.py")
+        spec = importlib.util.spec_from_file_location("zhaopin", zp)
+        _zp = importlib.util.module_from_spec(spec)
+        sys.modules["zhaopin"] = _zp
+        spec.loader.exec_module(_zp)
+
+    lines = ["智联招聘今日投递："]
+    total = 0
+    for tab, fetcher in [
+        ("已投递", _zp.fetch_zhaopin_applied),
+        ("收藏", _zp.fetch_zhaopin_collect),
+    ]:
+        try:
+            jobs = fetcher()
+            n = _zp._save_to_storage(jobs)
+            total += n
+            lines.append(f"  {tab}: {len(jobs)}条 → 新增{n}条")
+        except Exception as e:
+            lines.append(f"  {tab}: ⚠ {e}")
+    lines.append(f"\n今日共新增 {total} 条投递记录")
+    return "\n".join(lines)
+
+
+def sync_zhaopin_recommends() -> str:
+    """只同步 智联招聘 推荐"""
+    try:
+        import zhaopin as _zp2
+    except ImportError:
+        import os, sys, importlib.util
+        zp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zhaopin.py")
+        spec = importlib.util.spec_from_file_location("zhaopin", zp)
+        _zp2 = importlib.util.module_from_spec(spec)
+        sys.modules["zhaopin"] = _zp2
+        spec.loader.exec_module(_zp2)
+
+    try:
+        jobs = _zp2.fetch_zhaopin_recommend()
+        n = _zp2._save_to_storage(jobs)
+        return f"智联推荐同步完成，新增 {n} 条"
+    except Exception as e:
+        return f"智联推荐: ⚠ {e}"
+
+
 SKILL_MAP = {
+    "sync_all_applications": sync_all_applications,
+    "sync_all_recommends": sync_all_recommends,
+    "sync_boss_applications": sync_boss_applications,
+    "sync_boss_recommends": sync_boss_recommends,
+    "sync_zhaopin_applications": sync_zhaopin_applications,
+    "sync_zhaopin_recommends": sync_zhaopin_recommends,
     "run_setup_wizard": run_setup_wizard,
     "show_current_settings": show_current_settings,
     "select_ai_model": select_ai_model,
@@ -1072,8 +1302,11 @@ SKILL_MAP = {
     "fetch_boss_interviews": fetch_boss_interviews,
     "fetch_boss_interested": fetch_boss_interested,
     "fetch_daily_recommend": fetch_daily_recommend,
+    "sync_zhaopin_all": sync_zhaopin_all,
+    "export_zhaopin_to_excel": export_zhaopin_to_excel,
     "boss_job_summary": boss_job_summary,
     "export_boss_excel": export_boss_excel,
+    "export_all_excel": export_all_excel,
     "export_daily_recommend_excel": export_daily_recommend_excel,
     "list_exported_files": list_exported_files,
     "show_daily_recommend_table": show_daily_recommend_table,
