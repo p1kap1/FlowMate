@@ -495,6 +495,22 @@ def list_exported_files() -> str:
     return boss.list_exports()
 
 
+def show_daily_recommend_table() -> str:
+    """展示每日推荐岗位表"""
+    boss, err = _import_boss()
+    if not boss:
+        return err
+    return boss.show_daily_recommend_table()
+
+
+def show_application_table(status: str = None, date: str = None) -> str:
+    """展示投递岗位表"""
+    boss, err = _import_boss()
+    if not boss:
+        return err
+    return boss.show_application_table(status=status, date_str=date)
+
+
 # ---- Git 操作 ----
 
 def _import_gitops():
@@ -982,6 +998,28 @@ FUNCTION_DEFINITIONS = [
     {
         "type": "function",
         "function": {
+            "name": "show_daily_recommend_table",
+            "description": "以表格形式展示今天的每日推荐岗位。用户说「每日推荐表」「展示每日推荐」「推荐岗位」时调用。",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "show_application_table",
+            "description": "以表格形式展示投递岗位（沟通过/已投递/面试/感兴趣）。用户说「投递表」「岗位表」「展示投递」时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "status": {"type": "string", "description": "按状态筛选"},
+                    "date": {"type": "string", "description": "日期 YYYY-MM-DD，默认今天"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "update_job_status",
             "description": "更新某条投递记录的状态（比如从已投递改为面试）",
             "parameters": {
@@ -1022,6 +1060,8 @@ SKILL_MAP = {
     "boss_job_summary": boss_job_summary,
     "export_boss_excel": export_boss_excel,
     "list_exported_files": list_exported_files,
+    "show_daily_recommend_table": show_daily_recommend_table,
+    "show_application_table": show_application_table,
     "git_push_project": git_push_project,
     "git_display_status": git_display_status,
     "generate_project_summary": generate_project_summary,

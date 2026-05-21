@@ -605,6 +605,86 @@ def list_exports() -> str:
     return "\n".join(lines)
 
 
+def show_daily_recommend_table() -> str:
+    """展示每日推荐岗位表（Markdown 表格）"""
+    from storage import _load_jobs
+    from datetime import date as _date
+
+    today = _date.today().isoformat()
+    jobs = _load_jobs()
+    jobs = [j for j in jobs if j.get("status") == "每日推荐" and j.get("date") == today]
+
+    if not jobs:
+        return f"今天暂无每日推荐数据。请先说「同步每日推荐」。"
+
+    rows = []
+    for j in jobs:
+        company = j.get("company", "")[:15]
+        position = j.get("position", "")[:25]
+        salary = j.get("salary", "")
+        city = j.get("city", "")
+        exp = j.get("experience", "")
+        deg = j.get("degree", "")
+        scale_parts = [j.get("industry", ""), j.get("scale", "")]
+        scale = " · ".join(p for p in scale_parts if p)[:20]
+
+        rows.append([company, position, salary, city, f"{exp}/{deg}", scale])
+
+    lines = [
+        f"## 📊 每日推荐岗位（{today}，共 {len(jobs)} 条）",
+        "",
+        "| 公司 | 职位 | 薪资 | 城市 | 经验/学历 | 规模/行业 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        lines.append("| " + " | ".join(str(c) for c in r) + " |")
+
+    return "\n".join(lines)
+
+
+def show_application_table(status: str = None, date_str: str = None) -> str:
+    """展示投递岗位表（Markdown 表格，可按状态和日期筛选）"""
+    from storage import _load_jobs
+    from datetime import date as _date
+
+    if not date_str:
+        date_str = _date.today().isoformat()
+
+    jobs = _load_jobs()
+    jobs = [j for j in jobs if j.get("date") == date_str]
+    if status:
+        jobs = [j for j in jobs if j.get("status") == status]
+    # 排除每日推荐（单独展示）
+    jobs = [j for j in jobs if j.get("status") != "每日推荐"]
+
+    if not jobs:
+        return f"{date_str} 暂无投递记录。"
+
+    status_icon = {"沟通过": "💬", "已投递": "📤", "面试": "🎯", "感兴趣": "⭐", "不合适": "❌"}
+    rows = []
+    for j in jobs:
+        st = status_icon.get(j.get("status", ""), "")
+        company = j.get("company", "")[:15]
+        position = j.get("position", "")[:25]
+        salary = j.get("salary", "")
+        city = j.get("city", "")
+        scale_parts = [j.get("industry", ""), j.get("scale", "")]
+        scale = " · ".join(p for p in scale_parts if p)[:20]
+
+        rows.append([st, company, position, salary, city, scale])
+
+    lines = [
+        f"## 📋 投递岗位表（{date_str}，共 {len(jobs)} 条）",
+        "",
+        "| 状态 | 公司 | 职位 | 薪资 | 城市 | 规模/行业 |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        lines.append("| " + " | ".join(str(c) for c in r) + " |")
+
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     result = sync_all()
     print(f"同步完成: 新增 {result['new']} 条")
