@@ -142,6 +142,17 @@ def update_application_status(app_id: int, new_status: str) -> dict | None:
     return None
 
 
+def update_status_by_encrypt_id(encrypt_job_id: str, new_status: str) -> bool:
+    """按 encrypt_job_id 更新状态"""
+    jobs = _load_jobs()
+    for j in jobs:
+        if j.get("encrypt_job_id") == encrypt_job_id and j.get("status") != new_status:
+            j["status"] = new_status
+            _save_jobs(jobs)
+            return True
+    return False
+
+
 def delete_application(app_id: int) -> bool:
     jobs = _load_jobs()
     for i, j in enumerate(jobs):

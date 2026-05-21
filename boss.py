@@ -298,6 +298,12 @@ def _save_jobs_to_storage(jobs: list[dict]) -> int:
     for job in jobs:
         jid = job.get("encrypt_job_id", "") or job.get("job_id", "")
         if jid and jid in existing_ids:
+            # 职位已存在，更新状态（如从 沟通过 → 已投递）
+            new_status = job.get("status", "")
+            if new_status:
+                from storage import update_status_by_encrypt_id
+                if update_status_by_encrypt_id(jid, new_status):
+                    new_count += 1
             continue
         if jid:
             existing_ids.add(jid)
@@ -585,6 +591,79 @@ def export_excel(status_filter: str = None, date_filter: str = None) -> str:
     return f"✅ Excel 已生成：`{filepath}`（共 {total} 条：沟通过/已投递/感兴趣 {len(others)} 条 + 面试 {len(interviews)} 条）"
 
 
+def export_daily_recommend_excel(date_filter: str = None) -> str:
+    """单独导出每日推荐为 Excel"""
+    from storage import _load_jobs, BOSS_DIR as _report_dir
+    from datetime import date as _date
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+    if date_filter:
+        today = date_filter
+    else:
+        today = _date.today().isoformat()
+
+    jobs = _load_jobs()
+    jobs = [j for j in jobs if j.get("status") == "每日推荐" and j.get("date") == today]
+    if not jobs:
+        return f"{today} 暂无每日推荐数据。请先说「同步每日推荐」。"
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "每日推荐"
+
+    header_font = Font(bold=True, size=11)
+    header_fill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    thin_border = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+    link_font = Font(color="0563C1", underline="single")
+
+    headers = ["序号", "公司", "职位", "薪资", "城市", "经验", "学历", "规模", "行业"]
+    for col, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=col, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.border = thin_border
+        cell.alignment = Alignment(horizontal="center")
+
+    for i, j in enumerate(jobs, 2):
+        values = [
+            i - 1,
+            j.get("company", ""),
+            j.get("position", ""),
+            j.get("salary", ""),
+            j.get("city", ""),
+            j.get("experience", ""),
+            j.get("degree", ""),
+            j.get("scale", ""),
+            j.get("industry", ""),
+        ]
+        for col, val in enumerate(values, 1):
+            cell = ws.cell(row=i, column=col, value=val)
+            cell.border = thin_border
+            if col == 2:  # 企业名可点击
+                ebid = j.get("encrypt_brand_id", "")
+                if ebid:
+                    cell.font = link_font
+                    cell.hyperlink = f"https://www.zhipin.com/gongsi/{ebid}.html"
+
+    widths = [6, 26, 40, 16, 10, 10, 8, 16, 20]
+    for i, w in enumerate(widths, 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    import os
+    basename = f"每日推荐_{today}"
+    ext = ".xlsx"
+    filepath = os.path.join(_report_dir, f"{basename}{ext}")
+    counter = 1
+    while os.path.exists(filepath):
+        filepath = os.path.join(_report_dir, f"{basename}({counter}){ext}")
+        counter += 1
+
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    wb.save(filepath)
+    return f"✅ 每日推荐 Excel 已生成：`{filepath}`（共 {len(jobs)} 条）"
+
+
 def list_exports() -> str:
     """列出所有已导出的 Excel 文件"""
     import os
@@ -606,7 +685,7 @@ def list_exports() -> str:
 
 
 def show_daily_recommend_table() -> str:
-    """展示每日推荐岗位表（Markdown 表格）"""
+    """展示每日推荐岗位列表（最多10条）"""
     from storage import _load_jobs
     from datetime import date as _date
 
@@ -617,33 +696,28 @@ def show_daily_recommend_table() -> str:
     if not jobs:
         return f"今天暂无每日推荐数据。请先说「同步每日推荐」。"
 
-    rows = []
-    for j in jobs:
-        company = j.get("company", "")[:15]
-        position = j.get("position", "")[:25]
+    display = jobs[:10]
+    lines = [f"每日推荐岗位（{today}，共 {len(jobs)} 条）：", ""]
+    for j in display:
+        company = j.get("company", "")
+        position = j.get("position", "")
         salary = j.get("salary", "")
         city = j.get("city", "")
-        exp = j.get("experience", "")
-        deg = j.get("degree", "")
-        scale_parts = [j.get("industry", ""), j.get("scale", "")]
-        scale = " · ".join(p for p in scale_parts if p)[:20]
+        parts = [company, position]
+        if salary:
+            parts.append(salary)
+        if city:
+            parts.append(city)
+        lines.append(f"- {' · '.join(parts)}")
 
-        rows.append([company, position, salary, city, f"{exp}/{deg}", scale])
-
-    lines = [
-        f"## 📊 每日推荐岗位（{today}，共 {len(jobs)} 条）",
-        "",
-        "| 公司 | 职位 | 薪资 | 城市 | 经验/学历 | 规模/行业 |",
-        "|---|---|---|---|---|---|",
-    ]
-    for r in rows:
-        lines.append("| " + " | ".join(str(c) for c in r) + " |")
+    if len(jobs) > 10:
+        lines.append(f"\n（共 {len(jobs)} 条，展示前10条。说「导出Excel」获取完整列表）")
 
     return "\n".join(lines)
 
 
 def show_application_table(status: str = None, date_str: str = None) -> str:
-    """展示投递岗位表（Markdown 表格，可按状态和日期筛选）"""
+    """展示投递岗位列表（最多10条）"""
     from storage import _load_jobs
     from datetime import date as _date
 
@@ -654,33 +728,29 @@ def show_application_table(status: str = None, date_str: str = None) -> str:
     jobs = [j for j in jobs if j.get("date") == date_str]
     if status:
         jobs = [j for j in jobs if j.get("status") == status]
-    # 排除每日推荐（单独展示）
     jobs = [j for j in jobs if j.get("status") != "每日推荐"]
 
     if not jobs:
         return f"{date_str} 暂无投递记录。"
 
     status_icon = {"沟通过": "💬", "已投递": "📤", "面试": "🎯", "感兴趣": "⭐", "不合适": "❌"}
-    rows = []
-    for j in jobs:
+    display = jobs[:10]
+    lines = [f"投递岗位（{date_str}，共 {len(jobs)} 条）：", ""]
+    for j in display:
         st = status_icon.get(j.get("status", ""), "")
-        company = j.get("company", "")[:15]
-        position = j.get("position", "")[:25]
+        company = j.get("company", "")
+        position = j.get("position", "")
         salary = j.get("salary", "")
         city = j.get("city", "")
-        scale_parts = [j.get("industry", ""), j.get("scale", "")]
-        scale = " · ".join(p for p in scale_parts if p)[:20]
+        parts = [st, company, position]
+        if salary:
+            parts.append(salary)
+        if city:
+            parts.append(city)
+        lines.append(f"- {' · '.join(parts)}")
 
-        rows.append([st, company, position, salary, city, scale])
-
-    lines = [
-        f"## 📋 投递岗位表（{date_str}，共 {len(jobs)} 条）",
-        "",
-        "| 状态 | 公司 | 职位 | 薪资 | 城市 | 规模/行业 |",
-        "|---|---|---|---|---|---|",
-    ]
-    for r in rows:
-        lines.append("| " + " | ".join(str(c) for c in r) + " |")
+    if len(jobs) > 10:
+        lines.append(f"\n（共 {len(jobs)} 条，展示前10条。说「导出Excel」获取完整列表）")
 
     return "\n".join(lines)
 

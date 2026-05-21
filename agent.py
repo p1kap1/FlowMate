@@ -44,6 +44,7 @@ SYSTEM_PROMPT = f"""你是 FlowMate，一个工作日志助手。今天的日期
 - 用户说"搜索"、"找一下" → search_history
 - 用户说"本周小结"、"阶段总结" → summarize_period
 - 用户说"导出"、"生成Excel"、"导出投递记录" → export_boss_excel
+- 用户说"导出每日推荐"、"每日推荐Excel" → export_daily_recommend_excel
 - 用户说"之前的文件"、"历史导出"、"以前的数据" → list_exported_files
 - 用户说"推送GitHub"、"提交代码"、"更新仓库" → git_push_project
 - 用户说"Git状态"、"看看改了什么" → git_display_status

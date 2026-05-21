@@ -487,6 +487,14 @@ def export_boss_excel(status: str = None, date: str = None) -> str:
     return boss.export_excel(status_filter=status, date_filter=date)
 
 
+def export_daily_recommend_excel(date: str = None) -> str:
+    """单独导出每日推荐为 Excel"""
+    boss, err = _import_boss()
+    if not boss:
+        return err
+    return boss.export_daily_recommend_excel(date_filter=date)
+
+
 def list_exported_files() -> str:
     """列出历史导出的 Excel 文件"""
     boss, err = _import_boss()
@@ -979,18 +987,25 @@ FUNCTION_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "export_boss_excel",
-            "description": "将Boss直聘投递记录导出为Excel表格文件。用户说「导出Excel」「生成表格」「导出投递记录」时调用。指定某天时说「导出2026-02-20的Excel」。",
+            "description": "将投递记录（沟通过/已投递/面试/感兴趣）导出为Excel。用户说「导出Excel」时调用。",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "status": {
-                        "type": "string",
-                        "description": "按状态筛选导出：沟通过/已投递/面试/感兴趣，不传则导出全部",
-                    },
-                    "date": {
-                        "type": "string",
-                        "description": "导出指定日期的记录，格式YYYY-MM-DD，不传默认今天",
-                    },
+                    "status": {"type": "string", "description": "按状态筛选"},
+                    "date": {"type": "string", "description": "日期 YYYY-MM-DD，默认今天"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "export_daily_recommend_excel",
+            "description": "单独导出每日推荐岗位为Excel文件。用户说「导出每日推荐」「每日推荐Excel」时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "date": {"type": "string", "description": "日期 YYYY-MM-DD，默认今天"},
                 },
             },
         },
@@ -1059,6 +1074,7 @@ SKILL_MAP = {
     "fetch_daily_recommend": fetch_daily_recommend,
     "boss_job_summary": boss_job_summary,
     "export_boss_excel": export_boss_excel,
+    "export_daily_recommend_excel": export_daily_recommend_excel,
     "list_exported_files": list_exported_files,
     "show_daily_recommend_table": show_daily_recommend_table,
     "show_application_table": show_application_table,
