@@ -157,20 +157,30 @@ _ato.Timeout.__aenter__ = _patched_timeout_enter
 @cl.on_chat_start
 async def start():
     cl.user_session.set("agent", WorkAgent())
+
+    try:
+        from settings import needs_setup
+        if needs_setup():
+            cl.user_session.set("setup_mode", True)
+            await cl.Message(
+                content="👋 欢迎使用 **FlowMate**！检测到你还未配置 AI 模型。\n\n"
+                "请选择模型：\n"
+                "- 「**用DeepSeek**」（推荐，国产免费额度）\n"
+                "- 「**用OpenAI**」\n"
+                "- 「**用智谱**」\n\n"
+                "然后「**设置Key为sk-xxx**」填入你的 API Key。\n"
+                "暂时不想配说「**跳过**」。"
+            ).send()
+            return
+    except Exception:
+        pass
+
+    cl.user_session.set("setup_mode", False)
     await cl.Message(
         content="你好！我是 **FlowMate**，你的工作日志助手。\n\n"
-        "新用户说「**开始设置**」配置模型/Key/Boss/GitHub。\n"
-        "已配置好可以直接使用：\n\n"
-        "📮 **求职管理**\n"
-        "- 「同步投递」→ 拉取沟通过/已投递/面试/感兴趣\n"
-        "- 「同步每日推荐」→ 每日职位推荐\n"
-        "- 「投递汇总」→ 统计求职进度\n"
-        "- 「导出Excel」→ 生成表格（支持日期筛选）\n\n"
-        "📄 **日报总结**\n"
-        "- 「生成日报」→ 投递+开发+技巧+知识推荐\n"
-        "- 「项目总结」→ 开发简报\n"
-        "- 「导入开发日志」→ 加载 devlog.md\n\n"
-        "🔧 「搜索 XXX」「提交代码到 GitHub」「查看配置」\n\n"
+        "📮 「同步投递」「同步每日推荐」「投递汇总」「导出Excel」\n"
+        "📄 「生成日报」「项目总结」「导入开发日志」\n"
+        "🔧 「搜索」「提交代码到 GitHub」「查看配置」\n\n"
         "开始吧！"
     ).send()
 
@@ -179,7 +189,27 @@ async def start():
 async def on_message(message: cl.Message):
     agent: WorkAgent = cl.user_session.get("agent")
 
-    # 处理文件上传：保存到 data/uploads/
+    # 配置模式：本地处理设置命令，不经过 AI
+    if cl.user_session.get("setup_mode"):
+        msg = message.content.strip()
+        try:
+            reply = _handle_setup_command(msg)
+            if reply:
+                await cl.Message(content=reply).send()
+                # 检查是否配置完成
+                from settings import needs_setup
+                if not needs_setup():
+                    cl.user_session.set("setup_mode", False)
+                    await cl.Message(
+                        content="✅ 配置完成！现在可以使用了。\n\n"
+                        "「同步投递」「生成日报」「导出Excel」等等，开始吧！"
+                    ).send()
+                return
+        except Exception as e:
+            await cl.Message(content=f"配置失败: {e}").send()
+            return
+
+    # 文件上传处理
     if message.elements:
         for element in message.elements:
             if element.name and element.content:
@@ -211,3 +241,70 @@ async def on_message(message: cl.Message):
         os.remove(debug_log)
     
     await cl.Message(content=reply + debug_info).send()
+
+
+def _handle_setup_command(msg: str) -> str | None:
+    """本地处理设置命令，不依赖 AI"""
+    import re
+    from settings import (
+        select_model, set_api_key, set_model_name, set_api_base_url,
+        set_boss_cookie, set_github_token, switch_user, dismiss_setup,
+        MODEL_PRESETS,
+    )
+    msg_lower = msg.lower()
+
+    # 跳过
+    if any(w in msg_lower for w in ["跳过", "不需要", "不用", "暂不", "skip"]):
+        return dismiss_setup()
+
+    # 模型选择
+    for key, preset in MODEL_PRESETS.items():
+        if key != "custom" and key in msg_lower:
+            return select_model(key)
+
+    if "自定义" in msg or "custom" in msg_lower:
+        return select_model("custom")
+
+    # API Key
+    if "设置key" in msg_lower or "设置 key" in msg_lower or "apikey" in msg_lower or "api key" in msg_lower:
+        # 提取 key: 设置Key为sk-xxx 或 设置key为 sk-xxx
+        import re
+        m = re.search(r'(?:sk-|SK-)\S+', msg)
+        if m:
+            return set_api_key(m.group(0))
+        parts = msg.replace("：", ":").split("为", 1)
+        if len(parts) > 1:
+            return set_api_key(parts[1].strip())
+        return "请用「设置Key为sk-xxx」格式。例如：设置Key为sk-abc123"
+
+    # 模型名
+    if "设置模型" in msg or "模型名" in msg:
+        parts = msg.replace("：", ":").split("为", 1)
+        return set_model_name(parts[1].strip()) if len(parts) > 1 else "请用「设置模型为gpt-4」格式"
+
+    # API 地址
+    if "设置api" in msg_lower or "api地址" in msg_lower or "api 地址" in msg_lower:
+        parts = msg.replace("：", ":").split("为", 1)
+        return set_api_base_url(parts[1].strip()) if len(parts) > 1 else "请用「设置API地址为https://xxx」格式"
+
+    # Boss Cookie
+    if "cookie" in msg_lower and "boss" in msg_lower:
+        parts = msg.replace("：", ":").split(":", 1)
+        return set_boss_cookie(parts[1].strip()) if len(parts) > 1 else "请提供完整 Cookie 字符串"
+
+    # GitHub Token
+    if "token" in msg_lower or "github" in msg_lower:
+        m = re.search(r'(?:ghp_|github_pat_)\S+', msg)
+        if m:
+            return set_github_token(m.group(0))
+        parts = msg.replace("：", ":").split("为", 1)
+        return set_github_token(parts[1].strip()) if len(parts) > 1 else "请用「设置GitHub Token为ghp_xxx」格式"
+
+    # 切换用户
+    if "切换用户" in msg or "换账号" in msg:
+        parts = msg.replace("：", ":").split("用户", 1)
+        if len(parts) > 1:
+            return switch_user(parts[1].strip())
+        return "请用「切换用户 用户名」格式"
+
+    return None

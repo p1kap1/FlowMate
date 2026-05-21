@@ -260,3 +260,24 @@ def switch_user(username: str) -> str:
     users["active_user"] = username
     _save_users(users)
     return f"✅ 已切换到 `{username}`"
+
+
+def needs_setup() -> bool:
+    """检查是否需要引导配置"""
+    env = _load_env()
+    users = _load_users()
+    active = users.get("active_user", "default")
+    user_cfg = users.get("users", {}).get(active, {})
+    # 需要配置：没有 API Key 且用户没有跳过引导
+    has_key = bool(env.get("OPENAI_API_KEY"))
+    dismissed = user_cfg.get("setup_dismissed", False)
+    return not has_key and not dismissed
+
+
+def dismiss_setup() -> str:
+    """用户说不需要配置后，取消提醒"""
+    users = _load_users()
+    active = users.get("active_user", "default")
+    users.setdefault("users", {}).setdefault(active, {})["setup_dismissed"] = True
+    _save_users(users)
+    return "好的，以后不会再提醒。想配置时随时说「查看配置」或「开始设置」。"

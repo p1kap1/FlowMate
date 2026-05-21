@@ -344,6 +344,14 @@ def switch_active_user(username: str) -> str:
     return mod.switch_user(username)
 
 
+def dismiss_setup_reminder() -> str:
+    """用户不需要配置引导，取消后续提醒"""
+    mod, err = _import_settings()
+    if not mod:
+        return err
+    return mod.dismiss_setup()
+
+
 # ---- 投简历相关技能 ----
 
 def _import_boss():
@@ -1002,6 +1010,7 @@ SKILL_MAP = {
     "set_boss_user_cookie": set_boss_user_cookie,
     "set_github_access_token": set_github_access_token,
     "switch_active_user": switch_active_user,
+    "dismiss_setup_reminder": dismiss_setup_reminder,
     "generate_daily_report": generate_daily_report,
     "search_history": search_history,
     "summarize_period": summarize_period,
