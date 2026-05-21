@@ -158,7 +158,7 @@ _ato.Timeout.__aenter__ = _patched_timeout_enter
 async def start():
     cl.user_session.set("agent", WorkAgent())
     await cl.Message(
-        content="你好！我是 **WorkMate Agent**，你的工作日志助手。\n\n"
+        content="你好！我是 **FlowMate**，你的工作日志助手。\n\n"
         "我会**自动记录**我们的对话，以下是常用指令：\n\n"
         "📮 **求职管理**\n"
         "- 「同步投递」→ 从 Boss直聘 拉取沟通过/已投递/面试/感兴趣\n"

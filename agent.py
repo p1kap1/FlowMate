@@ -13,7 +13,7 @@ def _debug(msg: str):
     with open(DEBUG_LOG, "a", encoding="utf-8") as f:
         f.write(f"[{datetime.now().isoformat()}] {msg}\n")
 
-SYSTEM_PROMPT = f"""你是一个工作日志助手。今天的日期是 {date.today().isoformat()}。
+SYSTEM_PROMPT = f"""你是 FlowMate，一个工作日志助手。今天的日期是 {date.today().isoformat()}。
 
 你的任务是：
 1. 和用户自然聊天，帮助他们梳理思路、解答问题

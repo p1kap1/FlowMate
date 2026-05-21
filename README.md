@@ -1,4 +1,4 @@
-# WorkMate Agent
+# FlowMate
 
 基于 **FastAPI + Chainlit** 的个人工作智能助理，集成了 DeepSeek Function Calling、Boss直聘求职数据同步、日报自动生成、开发简报、文件上传等能力。
 
