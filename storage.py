@@ -5,7 +5,8 @@ from datetime import date, datetime
 from config import DATA_DIR
 
 CONV_DIR = os.path.join(DATA_DIR, "conversations")
-REPORT_DIR = os.path.join(DATA_DIR, "reports")
+REPORT_DIR = os.path.join(DATA_DIR, "reports", "daily")
+BOSS_DIR = os.path.join(DATA_DIR, "reports", "boss")
 JOB_FILE = os.path.join(DATA_DIR, "applications.json")
 UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 
@@ -13,6 +14,7 @@ UPLOAD_DIR = os.path.join(DATA_DIR, "uploads")
 def _ensure_dirs():
     os.makedirs(CONV_DIR, exist_ok=True)
     os.makedirs(REPORT_DIR, exist_ok=True)
+    os.makedirs(BOSS_DIR, exist_ok=True)
 
 
 def _conv_file(date_str: str = None) -> str:

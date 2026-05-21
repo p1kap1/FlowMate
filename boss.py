@@ -570,12 +570,13 @@ def export_excel(status_filter: str = None, date_filter: str = None) -> str:
 
     # 文件名
     import os
+    from storage import BOSS_DIR as _report_dir
     basename = f"Boss直聘_{today}"
     ext = ".xlsx"
-    filepath = os.path.join(DATA_DIR, "reports", f"{basename}{ext}")
+    filepath = os.path.join(_report_dir, f"{basename}{ext}")
     counter = 1
     while os.path.exists(filepath):
-        filepath = os.path.join(DATA_DIR, "reports", f"{basename}({counter}){ext}")
+        filepath = os.path.join(_report_dir, f"{basename}({counter}){ext}")
         counter += 1
 
     os.makedirs(os.path.dirname(filepath), exist_ok=True)
@@ -587,18 +588,18 @@ def export_excel(status_filter: str = None, date_filter: str = None) -> str:
 def list_exports() -> str:
     """列出所有已导出的 Excel 文件"""
     import os
-    report_dir = os.path.join(DATA_DIR, "reports")
-    if not os.path.exists(report_dir):
+    from storage import BOSS_DIR as _report_dir
+    if not os.path.exists(_report_dir):
         return "尚未导出过 Excel 文件。"
     files = sorted(
-        [f for f in os.listdir(report_dir) if f.startswith("Boss直聘_") and f.endswith(".xlsx")],
+        [f for f in os.listdir(_report_dir) if f.startswith("Boss直聘_") and f.endswith(".xlsx")],
         reverse=True,
     )
     if not files:
         return "尚未导出过 Excel 文件。"
     lines = [f"共 {len(files)} 个导出文件：", ""]
     for f in files[:10]:
-        path = os.path.join(report_dir, f)
+        path = os.path.join(_report_dir, f)
         size = os.path.getsize(path)
         lines.append(f"- `{f}` ({size} bytes)")
     return "\n".join(lines)
