@@ -159,7 +159,9 @@ def _save_to_storage(jobs: list[dict], today_only: bool = True) -> int:
             continue
         seen.add(key)
 
-        # 按 happenTime 或 jobPostingTime 计算日期
+        # 推荐类数据不受 today_only 限制
+        is_recommend = ("推荐" in status or "recommend" in status.lower())
+
         ts = job.get("happen_time", "")
         record_date = today
         if ts:
@@ -169,7 +171,7 @@ def _save_to_storage(jobs: list[dict], today_only: bool = True) -> int:
             except:
                 pass
 
-        if today_only and record_date != today:
+        if today_only and not is_recommend and record_date != today:
             continue
 
         notes_parts = []
@@ -264,6 +266,31 @@ def _extract_collect_items(items: list) -> list[dict]:
 def fetch_zhaopin_recommend() -> list[dict]:
     data = _request_api("/position/recommend", {"pageSize": 50})
     return _extract_items(data, "智联-推荐")
+
+
+def fetch_zhaopin_all_recommend() -> list[dict]:
+    """翻页获取全部推荐"""
+    all_items = []
+    page = 1
+    while True:
+        data = _request_api("/position/recommend", {"pageSize": 50, "page": page})
+        items = data.get("data", {}).get("jobList", [])
+        all_items.extend(items)
+        # 智联推荐没有 hasMore，按返回数量判断
+        if len(items) < 40:
+            break
+        page += 1
+        time.sleep(0.3)
+    return _extract_items_by_list(all_items, "智联-推荐")
+
+
+def _extract_items_by_list(items: list, status: str) -> list[dict]:
+    results = []
+    for item in items:
+        job = _parse_item(item, status)
+        if job["company"] or job["position"]:
+            results.append(job)
+    return results
 
 
 def sync_zhaopin() -> dict:

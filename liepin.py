@@ -25,13 +25,7 @@ TAB_CONFIG = {
     "猎聘-已查看": {"endpoint": "com.liepin.capply.pc.apply-list", "body": {"data": {"status": "viewed", "pageSize": 50, "page": 1}}},
     "猎聘-面试":   {"endpoint": "com.liepin.capply.pc.apply-list", "body": {"data": {"status": "interview", "pageSize": 50, "page": 1}}},
     "猎聘-收藏":   {"endpoint": "com.liepin.c.job-favorite.get-favorite-job-page", "body": {"data": {"pageSize": 50, "page": 1}}},
-    "猎聘-推荐": {"endpoint": "com.liepin.csearch.home-recommend-job-new",
-        "body": {"data": {
-            "operateKind": "LOGIN", "sortType": "PC_STU_HP_MIX",
-            "selectedExpect": '{"expectOriginDq":"010","otherExpectDqCodes":["020","030","070020","060020","050090"],"expectJobtitle":"NX0028","expectDq":"010","expectMonthSalaryUpper":12000,"expectMonthSalaryLower":7000,"expectSalmonths":12,"expectIndustry":"H0009","expectIndustryName":"人工智能","expectJobtitleName":"网络/信息安全","expectDqName":"北京","expectId":826495}',
-            "existFallbackResult": False,
-        }},
-    },
+    "猎聘-推荐": {"endpoint": "com.liepin.csearch.home-recommend-job-new", "body": None},
 }
 
 
@@ -43,6 +37,24 @@ def _load_config() -> dict:
         users = json.load(f)
     active = users.get("active_user", "default")
     return users.get("users", {}).get(active, {}).get("liepin", {})
+
+
+def _get_xsrf() -> str:
+    cfg = _load_config()
+    cookie_str = cfg.get("cookie", "")
+    for pair in cookie_str.split("; "):
+        if pair.startswith("XSRF-TOKEN="):
+            return pair.split("=", 1)[1]
+    return ""
+
+
+def _get_selected_expect() -> str:
+    """动态获取用户期望设置 JSON"""
+    data = _request_api("com.liepin.csearch.pc.get-valid-expect-info", {"data": {}})
+    expects = data.get("data", {}).get("validExpects", [])
+    if expects:
+        return json.dumps(expects[0], ensure_ascii=False)
+    return ""
 
 
 def _request_api(endpoint: str, body: dict = None) -> dict:
@@ -105,6 +117,11 @@ def _extract_items(data: dict, status: str) -> list[dict]:
         comp = item.get("comp") or {}
         di = item.get("dataInfo") or {}
         recruiter = item.get("recruiter") or {}
+        # 确保是 dict
+        if isinstance(job, str): job = {}
+        if isinstance(comp, str): comp = {}
+        if isinstance(di, str): di = {}
+        if isinstance(recruiter, str): recruiter = {}
 
         results.append({
             "encrypt_job_id": str(job.get("jobId") or item.get("jobId", "")),
@@ -153,7 +170,9 @@ def _save_to_storage(jobs: list[dict], today_only: bool = True) -> int:
             except:
                 pass
 
-        if today_only and record_date != today:
+        # 推荐类数据不受 today_only 限制
+        is_recommend = ("推荐" in job.get("status", ""))
+        if today_only and not is_recommend and record_date != today:
             continue
 
         notes_parts = []
@@ -210,8 +229,14 @@ def fetch_liepin_collect() -> list[dict]:
 
 
 def fetch_liepin_recommend() -> list[dict]:
-    cfg = TAB_CONFIG["猎聘-推荐"]
-    data = _request_api(cfg["endpoint"], cfg.get("body"))
+    expect_json = _get_selected_expect()
+    body = {"data": {
+        "operateKind": "LOGIN", "sortType": "PC_STU_HP_MIX",
+        "existFallbackResult": False,
+    }}
+    if expect_json:
+        body["data"]["selectedExpect"] = expect_json
+    data = _request_api(TAB_CONFIG["猎聘-推荐"]["endpoint"], body)
     return _extract_items(data, "猎聘-推荐")
 
 
