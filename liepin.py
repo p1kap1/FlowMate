@@ -110,13 +110,15 @@ def _request_api(endpoint: str, body: dict = None) -> dict:
 
 def _extract_items(data: dict, status: str) -> list[dict]:
     d = data.get("data", {})
-    items = d.get("data") or d.get("jobCardList") or d.get("list") or []
+    items = d.get("data") or d.get("datas") or d.get("jobCardList") or d.get("list") or []
     results = []
     for item in items:
-        job = item.get("job") or {}
-        comp = item.get("comp") or {}
-        di = item.get("dataInfo") or {}
-        recruiter = item.get("recruiter") or {}
+        # 收藏的 item 结构不同，job/comp/recruiter 在 jobCardDto 里
+        card = item.get("jobCardDto") or item
+        job = (card.get("job") or item.get("job") or {}).copy() if isinstance(card, dict) else {}
+        comp = (card.get("comp") or item.get("comp") or {}).copy() if isinstance(card, dict) else {}
+        di = card.get("dataInfo") or item.get("dataInfo") or {}
+        recruiter = card.get("recruiter") or item.get("recruiter") or {}
         # 确保是 dict
         if isinstance(job, str): job = {}
         if isinstance(comp, str): comp = {}
@@ -133,13 +135,13 @@ def _extract_items(data: dict, status: str) -> list[dict]:
             "district": job.get("district", ""),
             "experience": job.get("requireWorkYears") or di.get("requireWorkYears", "") or item.get("experience", ""),
             "degree": job.get("requireDegree") or di.get("requireDegree", "") or item.get("degree", ""),
-            "boss_name": recruiter.get("recruiterName") or recruiter.get("name", "") or item.get("publisherName", ""),
-            "boss_title": recruiter.get("title") or item.get("publisherTitle", ""),
+            "boss_name": recruiter.get("staffName") or recruiter.get("recruiterName") or recruiter.get("name", "") or item.get("publisherName", ""),
+            "boss_title": recruiter.get("hrJob") or recruiter.get("title") or item.get("publisherTitle", ""),
             "stage": comp.get("compStage") or comp.get("stage", "") or item.get("stage", ""),
             "industry": comp.get("compIndustry") or comp.get("industry", "") or di.get("industry", "") or item.get("industry", ""),
             "scale": comp.get("compScale") or comp.get("scale", "") or item.get("scale", ""),
-            "action_date": di.get("applyTime") or di.get("time", "") or item.get("applyTime", ""),
-            "happen_time": str(di.get("applyTimeStamp") or di.get("timestamp", "") or item.get("applyTimestamp", "")),
+            "action_date": di.get("applyTime") or di.get("time", "") or item.get("favoriteTime", "") or item.get("applyTime", ""),
+            "happen_time": str(di.get("applyTimeStamp") or di.get("timestamp", "") or item.get("favoriteTime", "") or item.get("applyTimestamp", "")),
             "status": status,
         })
     return results
@@ -170,9 +172,9 @@ def _save_to_storage(jobs: list[dict], today_only: bool = True) -> int:
             except:
                 pass
 
-        # 推荐类数据不受 today_only 限制
-        is_recommend = ("推荐" in job.get("status", ""))
-        if today_only and not is_recommend and record_date != today:
+        # 推荐/收藏类数据不受 today_only 限制
+        is_recommend_or_collect = ("推荐" in job.get("status", "") or "收藏" in job.get("status", ""))
+        if today_only and not is_recommend_or_collect and record_date != today:
             continue
 
         notes_parts = []
@@ -269,13 +271,20 @@ def sync_liepin() -> dict:
 
 
 def export_liepin_excel(date_filter: str = None) -> str:
-    from storage import _load_jobs, ZHAOPIN_DIR as _zdir
+    """导出猎聘全部（投递+推荐）"""
+    r1 = export_liepin_delivery_excel(date_filter)
+    r2 = export_liepin_recommend_excel(date_filter)
+    return r1 + "\n" + r2
+
+
+def export_liepin_delivery_excel(date_filter: str = None) -> str:
+    """只导出猎聘投递（已投递/已查看/面试/收藏）"""
+    from storage import _load_jobs
     from datetime import date as _date
     import openpyxl
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 
-    # Use liepin folder
-    liepin_dir = os.path.join(os.path.dirname(_zdir), "liepin")
+    liepin_dir = os.path.join(DATA_DIR, "reports", "liepin")
     os.makedirs(liepin_dir, exist_ok=True)
 
     if date_filter:
@@ -284,27 +293,21 @@ def export_liepin_excel(date_filter: str = None) -> str:
         today = _date.today().isoformat()
 
     jobs = _load_jobs()
-    jobs = [j for j in jobs if j.get("platform") == "猎聘" and j.get("date") == today]
+    jobs = [j for j in jobs if j.get("platform") == "猎聘" and j.get("date") == today and j.get("status") != "猎聘-推荐"]
     if not jobs:
-        return f"{today} 暂无猎聘数据。请先说「同步猎聘」。"
-
-    recommends = [j for j in jobs if j.get("status") == "猎聘-推荐"]
-    others = [j for j in jobs if j.get("status") != "猎聘-推荐"]
+        return f"{today} 暂无猎聘投递记录。"
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "猎聘"
-
+    ws.title = "猎聘投递"
     hfont = Font(bold=True, size=11)
     hfill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
-    sfont = Font(bold=True, size=13, color="1F4E79")
     bdr = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
-    lfont = Font(color="0563C1", underline="single")
     icons = {"猎聘-已投递": "📤 已投递", "猎聘-已查看": "👁 已查看", "猎聘-面试": "🎯 面试", "猎聘-收藏": "⭐ 收藏"}
 
     row = 1
     ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=8)
-    ws.cell(row=row, column=1, value="猎聘 — 投递记录").font = sfont
+    ws.cell(row=row, column=1, value="猎聘 — 投递记录").font = Font(bold=True, size=13, color="1F4E79")
     row += 1
 
     for col, h in enumerate(["序号", "类型", "招聘人", "企业", "企业规模", "招聘职位", "薪资", "要求"], 1):
@@ -312,7 +315,7 @@ def export_liepin_excel(date_filter: str = None) -> str:
         c.font = hfont; c.fill = hfill; c.border = bdr; c.alignment = Alignment(horizontal="center")
     row += 1
 
-    for i, j in enumerate(others):
+    for i, j in enumerate(jobs):
         vals = [i + 1, icons.get(j.get("status", ""), j.get("status", "")), j.get("boss_name", ""), j.get("company", ""),
                 " · ".join(p for p in [j.get("industry", ""), j.get("scale", ""), j.get("stage", "")] if p),
                 j.get("position", ""), j.get("salary", ""),
@@ -322,38 +325,72 @@ def export_liepin_excel(date_filter: str = None) -> str:
             c.border = bdr; c.alignment = Alignment(vertical="center")
         row += 1
 
-    if not others:
-        ws.cell(row=row, column=1, value="暂无投递/收藏记录")
-        row += 1
-
-    row += 1
-
-    if recommends:
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=9)
-        ws.cell(row=row, column=1, value="猎聘 — 职位推荐").font = sfont
-        row += 1
-
-        for col, h in enumerate(["序号", "类型", "企业", "招聘职位", "薪资", "城市", "经验", "学历", "规模"], 1):
-            c = ws.cell(row=row, column=col, value=h)
-            c.font = hfont; c.fill = hfill; c.border = bdr; c.alignment = Alignment(horizontal="center")
-        row += 1
-
-        for i, j in enumerate(recommends):
-            vals = [i + 1, "📋 推荐", j.get("company", ""), j.get("position", ""), j.get("salary", ""),
-                    j.get("city", ""), j.get("experience", ""), j.get("degree", ""), j.get("scale", "")]
-            for col, val in enumerate(vals, 1):
-                c = ws.cell(row=row, column=col, value=val)
-                c.border = bdr; c.alignment = Alignment(vertical="center")
-            row += 1
-
-    for i, w in enumerate([6, 14, 18, 24, 26, 30, 16, 18, 28], 1):
+    for i, w in enumerate([6, 12, 16, 22, 24, 28, 14, 16], 1):
         ws.column_dimensions[chr(64 + i)].width = w
 
-    basename = f"猎聘_{today}"
+    basename = f"猎聘_投递_{today}"
     filepath = os.path.join(liepin_dir, f"{basename}.xlsx")
     counter = 1
     while os.path.exists(filepath):
         filepath = os.path.join(liepin_dir, f"{basename}({counter}).xlsx")
         counter += 1
     wb.save(filepath)
-    return f"✅ 猎聘 Excel 已生成：`{filepath}`（共 {len(others) + len(recommends)} 条）"
+    return f"✅ 猎聘投递 Excel 已生成：`{filepath}`（共 {len(jobs)} 条）"
+
+
+def export_liepin_recommend_excel(date_filter: str = None) -> str:
+    """只导出猎聘推荐"""
+    from storage import _load_jobs
+    from datetime import date as _date
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+    liepin_dir = os.path.join(DATA_DIR, "reports", "liepin")
+    os.makedirs(liepin_dir, exist_ok=True)
+
+    if date_filter:
+        today = date_filter
+    else:
+        today = _date.today().isoformat()
+
+    jobs = _load_jobs()
+    jobs = [j for j in jobs if j.get("platform") == "猎聘" and j.get("status") == "猎聘-推荐"]
+    if not jobs:
+        return f"暂无猎聘推荐数据。"
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "猎聘推荐"
+    hfont = Font(bold=True, size=11)
+    hfill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    bdr = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+
+    row = 1
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=9)
+    ws.cell(row=row, column=1, value="猎聘 — 职位推荐").font = Font(bold=True, size=13, color="1F4E79")
+    row += 1
+
+    for col, h in enumerate(["序号", "类型", "企业", "招聘职位", "薪资", "城市", "经验", "学历", "规模"], 1):
+        c = ws.cell(row=row, column=col, value=h)
+        c.font = hfont; c.fill = hfill; c.border = bdr; c.alignment = Alignment(horizontal="center")
+    row += 1
+
+    for i, j in enumerate(jobs):
+        vals = [i + 1, "📋 推荐", j.get("company", ""), j.get("position", ""), j.get("salary", ""),
+                j.get("city", ""), j.get("experience", ""), j.get("degree", ""), j.get("scale", "")]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.border = bdr; c.alignment = Alignment(vertical="center")
+        row += 1
+
+    for i, w in enumerate([6, 10, 22, 30, 14, 10, 10, 8, 20], 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    basename = f"猎聘_推荐_{today}"
+    filepath = os.path.join(liepin_dir, f"{basename}.xlsx")
+    counter = 1
+    while os.path.exists(filepath):
+        filepath = os.path.join(liepin_dir, f"{basename}({counter}).xlsx")
+        counter += 1
+    wb.save(filepath)
+    return f"✅ 猎聘推荐 Excel 已生成：`{filepath}`（共 {len(jobs)} 条）"

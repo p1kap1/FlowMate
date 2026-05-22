@@ -315,9 +315,9 @@ def _save_jobs_to_storage(jobs: list[dict], today_only: bool = True) -> int:
             except (ValueError, OSError):
                 pass
 
-        # 推荐类数据不受 today_only 限制
-        is_recommend = ("推荐" in job.get("status", "") or "recommend" in job.get("status", "").lower())
-        if today_only and not is_recommend and record_date != today.isoformat():
+        # 推荐/收藏类数据不受 today_only 限制
+        is_recommend_or_collect = ("推荐" in job.get("status", "") or "recommend" in job.get("status", "").lower() or "收藏" in job.get("status", ""))
+        if today_only and not is_recommend_or_collect and record_date != today.isoformat():
             continue
 
         notes_parts = []

@@ -50,151 +50,113 @@ def generate_daily_report(date: str = None) -> str:
     conversation = storage.load_conversation(date_str)
     applications = storage.list_applications(date_str=date_str)
     devlog_content = _load_devlog(date_str)
+    uploads_content = _load_all_uploads()
 
-    if not conversation and not applications and not devlog_content:
+    if not conversation and not applications and not devlog_content and not uploads_content:
         return f"{date_str} 没有对话记录、投递记录和开发日志，无法生成日报。"
 
-    # ---- Part 1: 投递记录 ----
-    job_text = ""
+    # ---- 构建上下文 ----
+    context = []
+    if conversation:
+        for entry in conversation:
+            role = "用户" if entry["role"] == "user" else "助手"
+            context.append(f"[{entry['time'][:19]}] {role}: {entry['content']}")
+    if devlog_content:
+        context.append(f"\n[开发日志]\n{devlog_content}")
+    if uploads_content:
+        context.append(f"\n[上传文件]\n{uploads_content}")
+    full_context = "\n".join(context)
+
+    # 构建投递信息
+    job_info = ""
     if applications:
-        lines = ["## 📮 今日投递\n"]
+        lines = []
         by_status = {}
         for j in applications:
             by_status.setdefault(j["status"], [])
             by_status[j["status"]].append(j)
         for status, jobs in by_status.items():
-            lines.append(f"\n### {status}（{len(jobs)}家）\n")
+            lines.append(f"\n{status}（{len(jobs)}家）：")
             for j in jobs:
-                line = f"- **{j['company']}** — {j['position']}"
-                if j.get("notes"):
-                    line += f"（{j['notes']}）"
-                lines.append(line)
-        job_text = "\n".join(lines)
-    else:
-        job_text = "## 📮 今日投递\n\n暂无投递记录。"
+                parts = [j.get("company", ""), j.get("position", "")]
+                if j.get("salary"): parts.append(j["salary"])
+                if j.get("city"): parts.append(j["city"])
+                lines.append(f"- {' · '.join(parts)}")
+        job_info = "\n".join(lines)
 
-    # ---- Part 2 & 3: 项目总结 & 开发技巧（来自对话+devlog）----
-    project_text = ""
-    dev_tips_text = ""
-    if conversation or devlog_content:
-        lines = []
-        for entry in conversation:
-            role = "用户" if entry["role"] == "user" else "助手"
-            lines.append(f"[{entry['time'][:19]}] {role}: {entry['content']}")
-        if devlog_content:
-            lines.append(f"\n[开发日志]\n{devlog_content}")
-        # 读取上传文件
-        uploaded_files = storage.list_uploads()
-        for uf in uploaded_files:
-            import os as _os
-            name = _os.path.basename(uf)
-            content = storage.read_upload(name)
-            if content:
-                lines.append(f"\n[上传文件: {name}]\n{content[:2000]}")
-        conv_text = "\n".join(lines)
+    # ---- 一次性生成完整日报（减少API调用）----
+    prompt = f"""以下是用户一天的活动记录。请生成一份完整的日报，包含以下四个部分：
 
-        # 项目总结
-        prompt = f"""以下是一天的对话记录和开发日志。请从中提取「项目开发」相关的内容，生成一段项目总结。
+## 1. 📮 今日投递
+直接列出投递数据（已提供在下方）
 
-要求：
-- 只总结与代码开发、项目构建、功能实现、bug 修复相关的内容
-- 用 Markdown，简洁，每条 1 句话
-- 如果没有开发相关内容，写"今日无开发活动"
-- 不要编造
+## 2. 🎯 投递分析与建议
+根据投递的岗位方向，分析用户的求职策略：
+- 投递主要集中在哪些领域/技术栈
+- 哪些技能在投递岗位中频繁出现，用户可能需要加强
+- 给出 2-3 条具体的求职建议
+
+## 3. 🛠 今日总结
+- 如果有开发日志或上传文件，总结项目开发进展
+- 如果是普通聊天，总结今天的工作学习内容
+- 如果没有相关内容，写「今日无特别活动」
+
+## 4. 📚 推荐学习知识
+综合以下来源推荐 3-5 个用户最需要学习的知识点：
+- 投递岗位要求的技能（从岗位名称和描述推断）
+- 对话中提及但未深入的技术话题
+- 上传文件/开发日志中的技术方向
+- 每条包含：知识名称、一句话简介、为什么推荐
+
+要求：Markdown 格式，简洁，不要编造。投递数据已提供在下方。
 
 ---
-{conv_text}
+今日投递数据：
+{job_info or '暂无投递'}
+
+今日活动记录：
+{full_context or '暂无活动记录'}
 ---"""
 
-        response = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        project_text = response.choices[0].message.content or ""
+    response = client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    report_body = response.choices[0].message.content or "日报生成失败，请重试。"
 
-        # 开发技巧
-        prompt2 = f"""以下是一天的对话记录和开发日志。请从中提炼 1-3 条开发技巧或最佳实践。
-
-要求：
-- 每条包含：技巧名称、一句话说明
-- 优先提取开发中实际踩过的坑、用到的方案
-- 用 Markdown，简洁
-- 如果没有开发相关技巧，写"今日无特别技巧"
-- 不要编造
-
----
-{conv_text}
----"""
-
-        response2 = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt2}],
-        )
-        dev_tips_text = response2.choices[0].message.content or ""
-    else:
-        project_text = "今日无开发活动。"
-        dev_tips_text = "今日无特别技巧。"
-
-    # ---- Part 4: 推荐了解知识（综合对话+devlog+上传文件）----
-    rec_text = ""
-    if conversation or devlog_content:
-        lines = []
-        for entry in conversation:
-            role = "用户" if entry["role"] == "user" else "助手"
-            lines.append(f"[{entry['time'][:19]}] {role}: {entry['content']}")
-        if devlog_content:
-            lines.append(f"\n[开发日志]\n{devlog_content}")
-
-        # 读取上传文件
-        uploaded_files = storage.list_uploads()
-        for uf in uploaded_files:
-            import os as _os
-            name = _os.path.basename(uf)
-            content = storage.read_upload(name)
-            if content:
-                lines.append(f"\n[上传文件: {name}]\n{content[:2000]}")
-        conv_text2 = "\n".join(lines)
-
-        prompt3 = f"""以下是一天的对话记录、开发日志和上传文件。请根据其中涉及的技术话题、遇到的问题、讨论的方向，推荐 2-4 个值得深入了解的知识点或工具。
-
-要求：
-- 每条推荐包含：知识名称、一句话简介、推荐理由（与对话的关联）
-- 综合对话内容、项目总结、开发日志和上传文件来推荐
-- 优先推荐对话中明确提到但未深入的内容
-- 用 Markdown 格式，简洁
-- 不要编造
-
----
-{conv_text2}
----"""
-
-        response3 = client.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[{"role": "user", "content": prompt3}],
-        )
-        rec_text = response3.choices[0].message.content or ""
-    else:
-        rec_text = "今日无对话记录，无法生成知识推荐。"
-
-    # ---- 拼报告 ----
+    # ---- 拼完整报告 ----
     day_name = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][today.weekday()]
     full_report = (
         f"# 工作日报\n\n"
         f"**日期**: {date_str} {day_name}\n\n"
         f"---\n\n"
-        f"{job_text}\n\n"
-        f"---\n\n"
-        f"## 🛠 项目总结\n\n{project_text}\n\n"
-        f"---\n\n"
-        f"## 💡 开发技巧\n\n{dev_tips_text}\n\n"
-        f"---\n\n"
-        f"## 📚 推荐了解知识\n\n{rec_text}\n\n"
+        f"{report_body}\n\n"
         f"---\n"
-        f"*由 WorkMate Agent 自动生成*"
+        f"*由 FlowMate 自动生成*"
     )
 
     filepath = storage.save_report(date_str, full_report)
     return f"日报已生成并保存到 `{filepath}`\n\n{full_report}"
+
+
+def _load_all_uploads() -> str:
+    """读取所有上传文件内容（支持 md/txt/json/log/py/csv/html/yaml/toml）"""
+    files = storage.list_uploads()
+    if not files:
+        return ""
+    parts = []
+    supported = {".md", ".txt", ".json", ".log", ".py", ".csv", ".html", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf"}
+    for f in files:
+        import os
+        name = os.path.basename(f)
+        ext = os.path.splitext(name)[1].lower()
+        if ext not in supported:
+            continue
+        content = storage.read_upload(name)
+        if content:
+            # 限制每个文件 2000 字符避免 token 溢出
+            parts.append(f"### {name}\n```\n{content[:2000]}\n```")
+    return "\n".join(parts)
 
 
 def search_history(keywords: str) -> str:
@@ -501,7 +463,7 @@ def sync_zhaopin_all() -> str:
 
 
 def export_zhaopin_to_excel(date: str = None) -> str:
-    """导出智联招聘投递记录为 Excel"""
+    """导出智联全部（投递+推荐）"""
     boss, err = _import_boss()
     if boss:
         try:
@@ -517,6 +479,46 @@ def export_zhaopin_to_excel(date: str = None) -> str:
             else:
                 return "智联模块未找到"
         return zhaopin.export_zhaopin_excel(date_filter=date)
+    return f"BOSS模块加载失败（{err}）"
+
+
+def export_zhaopin_delivery_excel(date: str = None) -> str:
+    """只导出智联投递（已投递+收藏）"""
+    boss, err = _import_boss()
+    if boss:
+        try:
+            import zhaopin
+        except ImportError:
+            import os, sys, importlib.util
+            zp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zhaopin.py")
+            spec = importlib.util.spec_from_file_location("zhaopin", zp)
+            if spec and spec.loader:
+                zhaopin = importlib.util.module_from_spec(spec)
+                sys.modules["zhaopin"] = zhaopin
+                spec.loader.exec_module(zhaopin)
+            else:
+                return "智联模块未找到"
+        return zhaopin.export_zhaopin_delivery_excel(date_filter=date)
+    return f"BOSS模块加载失败（{err}）"
+
+
+def export_zhaopin_recommend_excel(date: str = None) -> str:
+    """只导出智联推荐"""
+    boss, err = _import_boss()
+    if boss:
+        try:
+            import zhaopin
+        except ImportError:
+            import os, sys, importlib.util
+            zp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "zhaopin.py")
+            spec = importlib.util.spec_from_file_location("zhaopin", zp)
+            if spec and spec.loader:
+                zhaopin = importlib.util.module_from_spec(spec)
+                sys.modules["zhaopin"] = zhaopin
+                spec.loader.exec_module(zhaopin)
+            else:
+                return "智联模块未找到"
+        return zhaopin.export_zhaopin_recommend_excel(date_filter=date)
     return f"BOSS模块加载失败（{err}）"
 
 
@@ -1229,7 +1231,7 @@ def sync_boss_recommends() -> str:
     try:
         jobs = boss.fetch_daily_recommend()
         n = boss._save_jobs_to_storage(jobs)
-        return f"Boss每日推荐同步完成，新增 {n} 条"
+        return f"Boss每日推荐: {len(jobs)}条 → 新增{n}条"
     except Exception as e:
         return f"Boss每日推荐: ⚠ {e}"
 
@@ -1278,7 +1280,7 @@ def sync_zhaopin_recommends() -> str:
     try:
         jobs = _zp2.fetch_zhaopin_recommend()
         n = _zp2._save_to_storage(jobs)
-        return f"智联推荐同步完成，新增 {n} 条"
+        return f"智联推荐: API返回{len(jobs)}条 → 新增{n}条"
     except Exception as e:
         return f"智联推荐: ⚠ {e}"
 
@@ -1333,17 +1335,83 @@ def sync_liepin_recommends() -> str:
     try:
         jobs = lp.fetch_liepin_recommend()
         n = lp._save_to_storage(jobs)
-        return f"猎聘推荐同步完成，新增 {n} 条"
+        return f"猎聘推荐: {len(jobs)}条 → 新增{n}条"
     except Exception as e:
         return f"猎聘推荐: ⚠ {e}"
 
 
 def export_liepin_to_excel(date: str = None) -> str:
-    """导出猎聘Excel"""
+    """导出猎聘全部"""
     lp, err = _import_liepin()
     if not lp:
         return err
     return lp.export_liepin_excel(date_filter=date)
+
+
+def export_liepin_delivery_to_excel(date: str = None) -> str:
+    """只导出猎聘投递"""
+    lp, err = _import_liepin()
+    if not lp:
+        return err
+    return lp.export_liepin_delivery_excel(date_filter=date)
+
+
+def export_liepin_recommend_to_excel(date: str = None) -> str:
+    """只导出猎聘推荐"""
+    lp, err = _import_liepin()
+    if not lp:
+        return err
+    return lp.export_liepin_recommend_excel(date_filter=date)
+
+
+# ---- 数据可视化 ----
+
+def show_daily_trend(days: int = 14) -> str:
+    from charts import chart_daily_trend
+    return chart_daily_trend(days)
+
+
+def show_status_pie() -> str:
+    from charts import chart_status_pie
+    return chart_status_pie()
+
+
+def show_platform_compare() -> str:
+    from charts import chart_platform_compare
+    return chart_platform_compare()
+
+
+def show_all_charts() -> str:
+    from charts import chart_all
+    return chart_all()
+
+
+def export_all_delivery(date: str = None) -> str:
+    """导出全部平台投递（不含推荐）"""
+    from boss import export_excel as boss_delivery
+    results = [
+        boss_delivery(date_filter=date),
+        export_zhaopin_delivery_excel(date=date),
+        export_liepin_delivery_to_excel(date=date),
+    ]
+    return "\n".join(results)
+
+
+def export_all_recommends_excel(date: str = None) -> str:
+    """导出全部平台推荐（不含投递）"""
+    from boss import export_daily_recommend_excel as boss_rec
+    results = [
+        boss_rec(date_filter=date),
+        export_zhaopin_recommend_excel(date=date),
+        export_liepin_recommend_to_excel(date=date),
+    ]
+    return "\n".join(results)
+
+
+def export_boss_recommend_excel(date: str = None) -> str:
+    """只导出Boss推荐"""
+    from boss import export_daily_recommend_excel as boss_rec
+    return boss_rec(date_filter=date)
 
 
 SKILL_MAP = {
@@ -1356,6 +1424,17 @@ SKILL_MAP = {
     "sync_liepin_applications": sync_liepin_applications,
     "sync_liepin_recommends": sync_liepin_recommends,
     "export_liepin_to_excel": export_liepin_to_excel,
+    "export_liepin_delivery_to_excel": export_liepin_delivery_to_excel,
+    "export_liepin_recommend_to_excel": export_liepin_recommend_to_excel,
+    "export_all_delivery": export_all_delivery,
+    "export_all_recommends_excel": export_all_recommends_excel,
+    "export_boss_recommend_excel": export_boss_recommend_excel,
+    "export_zhaopin_delivery_excel": export_zhaopin_delivery_excel,
+    "export_zhaopin_recommend_excel": export_zhaopin_recommend_excel,
+    "show_daily_trend": show_daily_trend,
+    "show_status_pie": show_status_pie,
+    "show_platform_compare": show_platform_compare,
+    "show_all_charts": show_all_charts,
     "run_setup_wizard": run_setup_wizard,
     "show_current_settings": show_current_settings,
     "select_ai_model": select_ai_model,

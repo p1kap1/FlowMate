@@ -159,9 +159,10 @@ def _save_to_storage(jobs: list[dict], today_only: bool = True) -> int:
             continue
         seen.add(key)
 
-        # 推荐类数据不受 today_only 限制
-        is_recommend = ("推荐" in status or "recommend" in status.lower())
+        # 推荐/收藏类数据不受 today_only 限制
+        is_recommend_or_collect = ("推荐" in status or "收藏" in status)
 
+        # 按 happenTime 计算日期
         ts = job.get("happen_time", "")
         record_date = today
         if ts:
@@ -171,7 +172,7 @@ def _save_to_storage(jobs: list[dict], today_only: bool = True) -> int:
             except:
                 pass
 
-        if today_only and not is_recommend and record_date != today:
+        if today_only and not is_recommend_or_collect and record_date != today:
             continue
 
         notes_parts = []
@@ -320,6 +321,136 @@ def sync_zhaopin() -> dict:
 
 
 def export_zhaopin_excel(date_filter: str = None) -> str:
+    """导出智联全部（投递+推荐）"""
+    r1 = export_zhaopin_delivery_excel(date_filter)
+    r2 = export_zhaopin_recommend_excel(date_filter)
+    return r1 + "\n" + r2
+
+
+def export_zhaopin_delivery_excel(date_filter: str = None) -> str:
+    """导出智联投递（已投递+收藏）"""
+    from storage import _load_jobs, ZHAOPIN_DIR as _report_dir
+    from datetime import date as _date
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+    if date_filter:
+        today = date_filter
+    else:
+        today = _date.today().isoformat()
+
+    jobs = _load_jobs()
+    jobs = [j for j in jobs if j.get("platform") == "智联招聘" and j.get("date") == today and j.get("status") != "智联-推荐"]
+    if not jobs:
+        return f"{today} 暂无智联投递/收藏记录。"
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "智联投递"
+    hfont = Font(bold=True, size=11)
+    hfill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    bdr = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+    link_font = Font(color="0563C1", underline="single")
+    icons = {"智联-已投递": "📤 已投递", "智联-收藏": "⭐ 收藏"}
+
+    row = 1
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=8)
+    ws.cell(row=row, column=1, value="智联招聘 — 投递与收藏").font = Font(bold=True, size=13, color="1F4E79")
+    row += 1
+
+    for col, h in enumerate(["序号", "类型", "招聘人", "企业", "企业规模", "招聘职位", "薪资", "要求"], 1):
+        c = ws.cell(row=row, column=col, value=h)
+        c.font = hfont; c.fill = hfill; c.border = bdr; c.alignment = Alignment(horizontal="center")
+    row += 1
+
+    for i, j in enumerate(jobs):
+        vals = [i + 1, icons.get(j.get("status", ""), j.get("status", "")), j.get("boss_name", ""), j.get("company", ""),
+                " · ".join(p for p in [j.get("industry", ""), j.get("scale", ""), j.get("stage", "")] if p),
+                j.get("position", ""), j.get("salary", ""),
+                " · ".join(p for p in [j.get("experience", ""), j.get("degree", "")] if p)]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.border = bdr; c.alignment = Alignment(vertical="center")
+            if col == 4:
+                cid = j.get("encrypt_brand_id", "")
+                if cid: c.font = link_font; c.hyperlink = f"https://jobs.zhaopin.com/{cid}.htm"
+            if col == 6:
+                jid = j.get("encrypt_job_id", "")
+                if jid: c.font = link_font; c.hyperlink = f"https://jobs.zhaopin.com/{jid}.htm"
+        row += 1
+
+    for i, w in enumerate([6, 12, 16, 22, 24, 28, 14, 16], 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    basename = f"智联招聘_投递_{today}"
+    filepath = os.path.join(_report_dir, f"{basename}.xlsx")
+    counter = 1
+    while os.path.exists(filepath):
+        filepath = os.path.join(_report_dir, f"{basename}({counter}).xlsx")
+        counter += 1
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    wb.save(filepath)
+    return f"✅ 智联投递 Excel 已生成：`{filepath}`（共 {len(jobs)} 条）"
+
+
+def export_zhaopin_recommend_excel(date_filter: str = None) -> str:
+    """导出智联推荐"""
+    from storage import _load_jobs, ZHAOPIN_DIR as _report_dir
+    from datetime import date as _date
+    import openpyxl
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+
+    if date_filter:
+        today = date_filter
+    else:
+        today = _date.today().isoformat()
+
+    jobs = _load_jobs()
+    jobs = [j for j in jobs if j.get("platform") == "智联招聘" and j.get("status") == "智联-推荐"]
+    if not jobs:
+        return f"暂无智联推荐数据。"
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "智联推荐"
+    hfont = Font(bold=True, size=11)
+    hfill = PatternFill(start_color="D9E1F2", end_color="D9E1F2", fill_type="solid")
+    bdr = Border(left=Side(style="thin"), right=Side(style="thin"), top=Side(style="thin"), bottom=Side(style="thin"))
+    link_font = Font(color="0563C1", underline="single")
+
+    row = 1
+    ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=9)
+    ws.cell(row=row, column=1, value="智联招聘 — 职位推荐").font = Font(bold=True, size=13, color="1F4E79")
+    row += 1
+
+    for col, h in enumerate(["序号", "类型", "企业", "招聘职位", "薪资", "城市", "经验", "学历", "规模"], 1):
+        c = ws.cell(row=row, column=col, value=h)
+        c.font = hfont; c.fill = hfill; c.border = bdr; c.alignment = Alignment(horizontal="center")
+    row += 1
+
+    for i, j in enumerate(jobs):
+        vals = [i + 1, "📋 推荐", j.get("company", ""), j.get("position", ""), j.get("salary", ""),
+                j.get("city", ""), j.get("experience", ""), j.get("degree", ""), j.get("scale", "")]
+        for col, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=col, value=val)
+            c.border = bdr; c.alignment = Alignment(vertical="center")
+        row += 1
+
+    for i, w in enumerate([6, 10, 22, 30, 14, 10, 10, 8, 20], 1):
+        ws.column_dimensions[chr(64 + i)].width = w
+
+    basename = f"智联招聘_推荐_{today}"
+    filepath = os.path.join(_report_dir, f"{basename}.xlsx")
+    counter = 1
+    while os.path.exists(filepath):
+        filepath = os.path.join(_report_dir, f"{basename}({counter}).xlsx")
+        counter += 1
+    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+    wb.save(filepath)
+    return f"✅ 智联推荐 Excel 已生成：`{filepath}`（共 {len(jobs)} 条）"
+
+
+def export_zhaopin_excel_old(date_filter: str = None) -> str:
     """导出智联投递记录为 Excel（已投递+收藏 上部，推荐 下部）"""
     from storage import _load_jobs, ZHAOPIN_DIR as _report_dir
     from datetime import date as _date

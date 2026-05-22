@@ -171,8 +171,9 @@ def delete_application(app_id: int) -> bool:
 def list_uploads() -> list[str]:
     """列出所有上传的文件"""
     os.makedirs(UPLOAD_DIR, exist_ok=True)
+    supported = {".md", ".txt", ".json", ".log", ".py", ".csv", ".html", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf"}
     files = sorted(
-        [f for f in os.listdir(UPLOAD_DIR) if f.endswith(".md") or f.endswith(".txt")],
+        [f for f in os.listdir(UPLOAD_DIR) if os.path.splitext(f)[1].lower() in supported],
         reverse=True,
     )
     return [os.path.join(UPLOAD_DIR, f) for f in files]
