@@ -140,23 +140,39 @@ def generate_daily_report(date: str = None) -> str:
 
 
 def _load_all_uploads() -> str:
-    """读取所有上传文件内容（支持 md/txt/json/log/py/csv/html/yaml/toml）"""
+    """读取所有上传文件内容（支持 md/txt/json/log/py/csv/html/yaml/toml/pdf）"""
     files = storage.list_uploads()
     if not files:
         return ""
     parts = []
-    supported = {".md", ".txt", ".json", ".log", ".py", ".csv", ".html", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf"}
+    supported = {".md", ".txt", ".json", ".log", ".py", ".csv", ".html", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".pdf"}
     for f in files:
         import os
         name = os.path.basename(f)
         ext = os.path.splitext(name)[1].lower()
         if ext not in supported:
             continue
-        content = storage.read_upload(name)
+        if ext == ".pdf":
+            content = _read_pdf(f)
+        else:
+            content = storage.read_upload(name)
         if content:
-            # 限制每个文件 2000 字符避免 token 溢出
             parts.append(f"### {name}\n```\n{content[:2000]}\n```")
     return "\n".join(parts)
+
+
+def _read_pdf(filepath: str) -> str:
+    """读取 PDF 文件内容"""
+    try:
+        import fitz
+        doc = fitz.open(filepath)
+        text = ""
+        for page in doc:
+            text += page.get_text()
+        doc.close()
+        return text.strip()
+    except Exception:
+        return ""
 
 
 def search_history(keywords: str) -> str:
