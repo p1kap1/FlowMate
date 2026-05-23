@@ -306,6 +306,30 @@ def set_boss_user_cookie(cookie: str) -> str:
     return mod.set_boss_cookie(cookie)
 
 
+def set_zhaopin_cookie(cookie_json: str) -> str:
+    """设置智联招聘 Cookie"""
+    mod, err = _import_settings()
+    if not mod:
+        return err
+    return mod.set_zhaopin_cookie(cookie_json)
+
+
+def set_liepin_cookie(cookie_str: str) -> str:
+    """设置猎聘 Cookie"""
+    mod, err = _import_settings()
+    if not mod:
+        return err
+    return mod.set_liepin_cookie(cookie_str)
+
+
+def change_user_role(username: str, role: str = "dev") -> str:
+    """设置用户角色"""
+    mod, err = _import_settings()
+    if not mod:
+        return err
+    return mod.set_user_role(username, role)
+
+
 def set_github_access_token(token: str) -> str:
     """设置 GitHub Token"""
     mod, err = _import_settings()
@@ -634,7 +658,13 @@ def git_display_status() -> str:
 # ---- 项目总结 ----
 
 def generate_project_summary(date: str = None) -> str:
-    """根据对话记录生成项目开发总结"""
+    """根据对话记录生成项目开发总结（开发者功能）"""
+    try:
+        from settings import is_developer
+        if not is_developer():
+            return "项目总结是开发者专属功能。试试「生成日报」获取你的日常总结吧。"
+    except Exception:
+        pass
     if not date:
         date = _dt.date.today().isoformat()
 
@@ -701,7 +731,13 @@ def _load_devlog(date_str: str) -> str:
 
 
 def import_devlog() -> str:
-    """将 devlog.md 导入到今日对话记录中"""
+    """将 devlog.md 导入到今日对话记录中（仅开发者可用）"""
+    try:
+        from settings import is_developer
+        if not is_developer():
+            return "此功能仅对开发者开放。"
+    except Exception:
+        pass
     import os
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "devlog.md")
     if not os.path.exists(path):
@@ -920,6 +956,30 @@ FUNCTION_DEFINITIONS = [
                 "type": "object",
                 "properties": {"cookie": {"type": "string", "description": "完整Cookie字符串"}},
                 "required": ["cookie"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_zhaopin_cookie",
+            "description": "设置智联招聘Cookie。用户说「更新智联Cookie」时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {"cookie_json": {"type": "string", "description": "智联Cookie的JSON字符串"}},
+                "required": ["cookie_json"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_liepin_cookie",
+            "description": "设置猎聘Cookie。用户说「更新猎聘Cookie」时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {"cookie_str": {"type": "string", "description": "猎聘Cookie字符串"}},
+                "required": ["cookie_str"],
             },
         },
     },
@@ -1500,6 +1560,9 @@ SKILL_MAP = {
     "set_custom_model": set_custom_model,
     "set_custom_api_url": set_custom_api_url,
     "set_boss_user_cookie": set_boss_user_cookie,
+    "set_zhaopin_cookie": set_zhaopin_cookie,
+    "set_liepin_cookie": set_liepin_cookie,
+    "change_user_role": change_user_role,
     "set_github_access_token": set_github_access_token,
     "switch_active_user": switch_active_user,
     "dismiss_setup_reminder": dismiss_setup_reminder,

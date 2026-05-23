@@ -103,6 +103,13 @@ def show_settings() -> str:
         f"**API Key**: {mask(env.get('OPENAI_API_KEY', ''))}",
         f"**Boss Cookie**: {mask(user_cfg.get('boss_cookie', ''))}",
     ]
+    # 智联/猎聘 Cookie
+    zp = user_cfg.get("zhaopin", {})
+    if isinstance(zp, dict) and zp.get("cookie_json"):
+        lines.append(f"**智联 Cookie**: {mask(str(zp.get('cookie_json', '')))}")
+    lp = user_cfg.get("liepin", {})
+    if isinstance(lp, dict) and lp.get("cookie"):
+        lines.append(f"**猎聘 Cookie**: {mask(str(lp.get('cookie', '')))}")
 
     r = subprocess.run(["git", "remote", "get-url", "origin"],
                        cwd=PROJECT_DIR, capture_output=True, text=True)
@@ -129,13 +136,17 @@ def setup_wizard() -> str:
     user_cfg = users.get("users", {}).get(active, {})
 
     key_ok = bool(env.get("OPENAI_API_KEY"))
-    cookie_ok = bool(user_cfg.get("boss_cookie"))
+    boss_ok = bool(user_cfg.get("boss_cookie"))
+    zp_cfg = user_cfg.get("zhaopin", {})
+    zhaopin_ok = bool(isinstance(zp_cfg, dict) and zp_cfg.get("cookie_json"))
+    lp_cfg = user_cfg.get("liepin", {})
+    liepin_ok = bool(isinstance(lp_cfg, dict) and lp_cfg.get("cookie"))
     git_ok = bool(_check_git_remote())
 
     lines = [
         "## 👋 FlowMate 配置中心",
         "",
-        f"当前用户：**{active}**",
+        f"当前用户：**{active}**（{'🛠 开发者' if user_cfg.get('role') == 'dev' else '👤 普通用户'}）",
         "",
         "| 配置项 | 状态 | 操作 |",
         "|---|---|---|",
@@ -146,7 +157,9 @@ def setup_wizard() -> str:
     status = "✅" if key_ok else "❌"
     lines.append(f"| 🧠 模型 | {status} {provider}/{model} | `用DeepSeek` `用OpenAI` `用智谱` |")
     lines.append(f"| 🔑 API Key | {'✅ 已设置' if key_ok else '❌ 未设置'} | `设置Key为sk-xxx` |")
-    lines.append(f"| 💼 Boss直聘 | {'✅ 已配置' if cookie_ok else '❌ 未配置'} | `更新Boss Cookie` |")
+    lines.append(f"| 💼 Boss直聘 | {'✅ 已配置' if boss_ok else '❌ 未配置'} | `更新Boss Cookie` |")
+    lines.append(f"| 🔷 智联招聘 | {'✅ 已配置' if zhaopin_ok else '❌ 未配置'} | `更新智联Cookie` |")
+    lines.append(f"| 🔶 猎聘 | {'✅ 已配置' if liepin_ok else '❌ 未配置'} | `更新猎聘Cookie` |")
     lines.append(f"| 📦 GitHub | {'✅ 已配置' if git_ok else '❌ 未配置'} | `设置GitHub Token为ghp_xxx` |")
 
     lines.append("")
@@ -164,8 +177,12 @@ def setup_wizard() -> str:
     missing = []
     if not key_ok:
         missing.append("`设置Key为sk-xxx`")
-    if not cookie_ok:
+    if not boss_ok:
         missing.append("`更新Boss Cookie`")
+    if not zhaopin_ok:
+        missing.append("`更新智联Cookie`")
+    if not liepin_ok:
+        missing.append("`更新猎聘Cookie`")
     if not git_ok:
         missing.append("`设置GitHub Token为ghp_xxx`")
     if missing:
@@ -232,6 +249,24 @@ def set_boss_cookie(cookie: str) -> str:
     return f"✅ {active} 的 Boss Cookie 已更新"
 
 
+def set_zhaopin_cookie(cookie_json: str) -> str:
+    """设置智联招聘 Cookie JSON"""
+    users = _load_users()
+    active = users.get("active_user", "default")
+    users.setdefault("users", {}).setdefault(active, {}).setdefault("zhaopin", {})["cookie_json"] = cookie_json.strip()
+    _save_users(users)
+    return f"✅ {active} 的智联 Cookie 已更新"
+
+
+def set_liepin_cookie(cookie_str: str) -> str:
+    """设置猎聘 Cookie 字符串"""
+    users = _load_users()
+    active = users.get("active_user", "default")
+    users.setdefault("users", {}).setdefault(active, {}).setdefault("liepin", {})["cookie"] = cookie_str.strip()
+    _save_users(users)
+    return f"✅ {active} 的猎聘 Cookie 已更新"
+
+
 def set_github_token(token: str) -> str:
     token = token.strip()
     r = subprocess.run(["git", "remote", "get-url", "origin"],
@@ -268,10 +303,36 @@ def needs_setup() -> bool:
     users = _load_users()
     active = users.get("active_user", "default")
     user_cfg = users.get("users", {}).get(active, {})
-    # 需要配置：没有 API Key 且用户没有跳过引导
     has_key = bool(env.get("OPENAI_API_KEY"))
     dismissed = user_cfg.get("setup_dismissed", False)
     return not has_key and not dismissed
+
+
+def is_developer() -> bool:
+    """当前用户是否为开发者（有 devlog/项目总结权限）"""
+    users = _load_users()
+    active = users.get("active_user", "default")
+    user_cfg = users.get("users", {}).get(active, {})
+    return user_cfg.get("role") == "dev"
+
+
+def get_user_role() -> str:
+    """获取当前用户角色"""
+    users = _load_users()
+    active = users.get("active_user", "default")
+    user_cfg = users.get("users", {}).get(active, {})
+    return user_cfg.get("role", "user")
+
+
+def set_user_role(username: str, role: str) -> str:
+    """设置用户角色（dev/user）"""
+    users = _load_users()
+    if username not in users.get("users", {}):
+        return f"用户 `{username}` 不存在"
+    users["users"][username]["role"] = role
+    _save_users(users)
+    icon = "🛠" if role == "dev" else "👤"
+    return f"✅ {username} 已设为 {icon} {'开发者' if role == 'dev' else '普通用户'}"
 
 
 def dismiss_setup() -> str:

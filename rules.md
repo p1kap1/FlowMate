@@ -54,7 +54,9 @@
 - 用户说"设置Key为xxx" → set_user_api_key
 - 用户说"设置模型名" → set_custom_model
 - 用户说"设置API地址" → set_custom_api_url
-- 用户说"更新Boss Cookie"、"更换Cookie" → set_boss_user_cookie
+- 用户说"更新Boss Cookie"、"更换Boss Cookie" → set_boss_user_cookie
+- 用户说"更新智联Cookie"、"设置智联Cookie" → set_zhaopin_cookie
+- 用户说"更新猎聘Cookie"、"设置猎聘Cookie" → set_liepin_cookie
 - 用户说"设置GitHub Token"、"更换Token" → set_github_access_token
 - 用户说"切换用户"、"换账号" → switch_active_user
 - 用户说"图表"、"数据可视化"、"chart" → show_all_charts

@@ -205,20 +205,43 @@ async def start():
     # 新会话：清空对话历史
     cl.user_session.set("chat_history", [])
 
-    await cl.Message(
-        content="嗨～我是 **FlowMate**，你的专属工作伴侣 💼\n\n"
-        "我能帮你打理这些事：\n\n"
-        "📮 **求职管家**\n"
-        "「同步投递」·「同步推荐」·「投递汇总」·「导出Excel」·「图表」\n"
-        "→ Boss直聘 + 智联 + 猎聘 三平台一站式管理\n\n"
-        "📝 **日报助手**\n"
-        "「生成日报」→ 投递分析 + 学习建议 + 技能推荐\n"
-        "「项目总结」·「导入开发日志」·「搜索历史」\n\n"
-        "🔧 **工具箱**\n"
-        "「查看配置」·「提交到GitHub」·「切换用户」·「开始设置」\n\n"
-        "拖一个文件进来，我能读你的简历、JD、聊天记录哦 📎\n\n"
-        "今天想从哪儿开始？😊"
-    ).send()
+    # 根据用户角色显示不同欢迎语
+    try:
+        from settings import is_developer
+        dev = is_developer()
+    except Exception:
+        dev = False
+
+    if dev:
+        await cl.Message(
+            content="嗨～我是 **FlowMate**，你的专属工作伴侣 💼\n\n"
+            "我能帮你打理这些事：\n\n"
+            "📮 **求职管家**\n"
+            "「同步投递」·「同步推荐」·「投递汇总」·「导出Excel」·「图表」\n"
+            "→ Boss直聘 + 智联 + 猎聘 三平台一站式管理\n\n"
+            "📝 **日报助手**\n"
+            "「生成日报」→ 投递分析 + 学习建议 + 技能推荐\n"
+            "「项目总结」·「导入开发日志」·「搜索历史」\n"
+            "「搜索XX最新资料」→ 实时搜索引擎\n\n"
+            "🔧 **工具箱**\n"
+            "「查看配置」·「提交到GitHub」·「切换用户」·「开始设置」\n\n"
+            "拖一个文件进来，我能读你的简历、JD、聊天记录哦 📎\n\n"
+            "今天想从哪儿开始？😊"
+        ).send()
+    else:
+        await cl.Message(
+            content="嗨～我是 **FlowMate**，你的求职伴侣 💼\n\n"
+            "我能帮你打理这些事：\n\n"
+            "📮 **求职管家**\n"
+            "「同步投递」·「同步推荐」·「投递汇总」·「导出Excel」\n"
+            "→ Boss直聘 + 智联 + 猎聘 三平台一站式管理\n\n"
+            "📝 **日报助手**\n"
+            "「生成日报」→ 投递分析 + 学习建议 + 技能推荐\n"
+            "「搜索XX最新资料」→ 实时搜索引擎\n\n"
+            "🔧 「查看配置」·「帮助」·「开始设置」\n\n"
+            "拖一个文件进来，我能读你的简历和 JD 哦 📎\n\n"
+            "今天想从哪儿开始？😊"
+        ).send()
 
 
 @cl.on_chat_resume
@@ -249,22 +272,35 @@ async def on_message(message: cl.Message):
 
     # 功能介绍 / 帮助：直接回复，不需 AI
     if any(w in msg for w in ["你能做什么", "功能介绍", "有什么功能", "怎么用", "帮助", "help", "使用指南", "全部功能"]):
-        await cl.Message(
-            content="💼 **FlowMate 能帮你做这些**：\n\n"
+        try:
+            from settings import is_developer
+            dev = is_developer()
+        except Exception:
+            dev = False
+
+        base = (
+            "💼 **FlowMate 能帮你做这些**：\n\n"
             "📮 **求职管家**\n"
             "「同步投递」Boss+智联+猎聘 ·「同步推荐」·「投递汇总」\n"
             "「导出Excel」·「投递表」·「每日推荐表」·「图表」\n\n"
             "📝 **日报助手**\n"
             "「生成日报」投递分析+学习建议+技能推荐\n"
-            "「项目总结」·「搜索XX最新资料」（实时搜索引擎）\n\n"
-            "📁 **文件上传**\n"
-            "拖 md/pdf/txt/json/log 到对话框 → 自动分析\n\n"
-            "🔧 **工具箱**\n"
-            "「查看配置」·「提交到GitHub」·「切换用户」·「刷新猎聘」\n\n"
+            "「搜索XX最新资料」（实时搜索引擎）\n"
+        )
+        if dev:
+            base += (
+                "「项目总结」·「导入开发日志」（开发者功能）\n\n"
+                "📁 **文件上传**\n"
+                "拖 md/pdf/txt/json/log 到对话框 → 自动分析\n\n"
+                "🔧 **工具箱**\n"
+                "「查看配置」·「提交到GitHub」·「切换用户」·「刷新猎聘」\n\n"
+            )
+        base += (
             "📊 **多平台**\n"
             "Boss直聘 · 智联招聘 · 猎聘 | 支持 DeepSeek/OpenAI/智谱\n\n"
             "今天想从哪儿开始？😊"
-        ).send()
+        )
+        await cl.Message(content=base).send()
         return
 
     # 配置模式：本地处理设置命令，不经过 AI
